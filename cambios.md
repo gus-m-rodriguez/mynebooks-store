@@ -962,14 +962,18 @@ useEffect(() => {
 ## Archivos Modificados
 
 1. `frontend/package.json` - Agregado flag `-s` al comando start
-2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado + manejo de `collection_id` + detección de errores 404
-3. `backend/src/libs/mercadopago.js` - Agregadas funciones `buscarPagosPorOrden` y `obtenerPreferencia` + logging mejorado en `obtenerPago` y `buscarPagosPorOrden`
+2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado + manejo de `collection_id` + detección de errores 404 + soporte para `merchant_order_id`
+3. `backend/src/libs/mercadopago.js` - Agregadas funciones `buscarPagosPorOrden`, `obtenerPreferencia` y `buscarPagosPorMerchantOrder` + logging mejorado en `obtenerPago` y `buscarPagosPorOrden`
 4. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
-5. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` y `collection_id` de URL + uso de endpoint público + mejor manejo de estados + logging mejorado
+5. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id`, `collection_id` y `merchant_order_id` de URL + uso de endpoint público + mejor manejo de estados + logging mejorado
 6. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
 7. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
 8. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales + establecer `isAuth` inmediatamente + reintentos automáticos
 9. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
+10. `backend/src/app.js` - Middleware selectivo para excluir webhook de `express.json()` y permitir body raw
+11. `backend/src/router/pagos.routes.js` - Agregado middleware `express.raw()` para capturar body raw del webhook
+12. `backend/src/controllers/pagos.controller.js` - Modificado para usar `req.rawBody` en validación de firma
+13. `backend/package.json` - Agregado `axios` a las dependencias
 
 ---
 
@@ -1003,8 +1007,10 @@ useEffect(() => {
   - Establece `isAuth = true` inmediatamente si hay token en cookies, evitando redirecciones al login.
   - Reintentos automáticos después de 2 segundos si la verificación falla temporalmente.
 - **Endpoint público seguro**: La seguridad se basa en validar el `payment_id` con Mercado Pago antes de procesar, no en autenticación del usuario.
-- **Manejo de collection_id**: El sistema ahora maneja tanto `payment_id` como `collection_id`, y busca pagos por `external_reference` si el `payment_id` no es válido o no está disponible.
+- **Manejo de collection_id y merchant_order_id**: El sistema ahora maneja `payment_id`, `collection_id` y `merchant_order_id`. Prioriza buscar por `merchant_order_id` porque es más confiable (Mercado Pago lo asigna directamente a la orden comercial).
+- **Validación de firma webhook corregida**: El webhook ahora captura el body raw antes de parsearlo, asegurando que la firma se valide con el body exacto que Mercado Pago envía (sin cambios en el orden de propiedades).
 - **Logging mejorado**: Logs detallados en todo el flujo de verificación de pagos para facilitar el debugging en producción.
+- **Estrategia de búsqueda mejorada**: El sistema intenta encontrar pagos en este orden: 1) Por `payment_id` directo, 2) Por `merchant_order_id` (más confiable), 3) Por `external_reference` (ID de orden).
 
 ## Estados que Actualiza el Endpoint Público
 
@@ -1027,6 +1033,272 @@ El endpoint `verificarPagoPublico` actualiza:
    - Si `pending`/`in_process`: No cambia stock
 
 4. **Auditoría**: Registra el evento en la tabla `auditoria`
+
+---
+
+### 14. Agregar Soporte para merchant_order_id y Corrección de Validación de Firma Webhook
+
+**Problema Identificado**:
+- El `payment_id` y `collection_id` que venían en la URL eran iguales, indicando que era el ID de la preferencia, no del pago real.
+- La búsqueda por `external_reference` no encontraba pagos porque el pago aún no estaba registrado en Mercado Pago al momento del redirect.
+- La validación de la firma del webhook fallaba porque se usaba el body parseado (con orden de propiedades cambiado) en lugar del body raw original.
+
+**Archivos Modificados**:
+
+#### 1. `backend/src/libs/mercadopago.js`
+
+**Función agregada**: `buscarPagosPorMerchantOrder` (líneas ~252-294)
+
+**Código**:
+```javascript
+export const buscarPagosPorMerchantOrder = async (merchantOrderId) => {
+  try {
+    console.log(`[buscarPagosPorMerchantOrder] Buscando pagos para merchant_order_id ${merchantOrderId}`);
+    
+    const axios = (await import("axios")).default;
+    const response = await axios.get(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
+      headers: {
+        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      },
+    });
+    
+    if (response.data && response.data.payments && response.data.payments.length > 0) {
+      // Obtener el pago más reciente (último en el array)
+      const ultimoPagoId = response.data.payments[response.data.payments.length - 1];
+      // Obtener detalles del pago
+      const pagoInfo = await obtenerPago(ultimoPagoId);
+      return pagoInfo;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("[buscarPagosPorMerchantOrder] ❌ Error buscando pagos por merchant_order_id:", error);
+    throw error;
+  }
+};
+```
+
+**Explicación**: 
+- El `merchant_order_id` identifica la orden comercial en Mercado Pago y contiene los IDs de todos los pagos asociados.
+- Esta función obtiene la orden comercial y luego busca el pago más reciente.
+- Es más confiable que buscar por `external_reference` porque Mercado Pago lo asigna directamente.
+
+#### 2. `backend/src/controllers/ordenes.controller.js`
+
+**Función modificada**: `verificarPagoPublico` (líneas ~1260-1379)
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+const { payment_id, collection_id, status } = req.body;
+
+// Validar que se proporcionó al menos uno de los IDs
+if (!payment_id && !collection_id) {
+  return res.status(400).json({
+    message: "payment_id o collection_id es requerido",
+  });
+}
+
+// Estrategia 1: Intentar obtener pago por payment_id
+// Estrategia 2: Buscar por external_reference
+```
+
+**DESPUÉS**:
+```javascript
+const { payment_id, collection_id, merchant_order_id, status } = req.body;
+
+// Validar que se proporcionó al menos uno de los IDs
+if (!payment_id && !collection_id && !merchant_order_id) {
+  return res.status(400).json({
+    message: "payment_id, collection_id o merchant_order_id es requerido",
+  });
+}
+
+// Estrategia 1: Intentar obtener pago por payment_id (si no es preferencia)
+// Estrategia 2: Buscar por merchant_order_id (más confiable) ← NUEVO
+// Estrategia 3: Buscar por external_reference (ID de orden)
+```
+
+**Explicación**:
+- Ahora acepta `merchant_order_id` como parámetro.
+- Prioriza buscar por `merchant_order_id` antes que por `external_reference`.
+- El `merchant_order_id` es más confiable porque Mercado Pago lo asigna directamente a la orden comercial.
+
+#### 3. `frontend/src/pages/OrdenSuccessPage.jsx`
+
+**Función modificada**: `useEffect` en `OrdenSuccessPage` (líneas ~15-45)
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+const paymentId = searchParams.get("payment_id");
+const collectionId = searchParams.get("collection_id");
+
+const body = {};
+if (paymentId) body.payment_id = paymentId;
+if (collectionId) body.collection_id = collectionId;
+```
+
+**DESPUÉS**:
+```javascript
+const paymentId = searchParams.get("payment_id");
+const collectionId = searchParams.get("collection_id");
+const merchantOrderId = searchParams.get("merchant_order_id"); // ← NUEVO
+
+const body = {};
+if (paymentId) body.payment_id = paymentId;
+if (collectionId) body.collection_id = collectionId;
+if (merchantOrderId) body.merchant_order_id = merchantOrderId; // ← NUEVO
+```
+
+**Explicación**:
+- Extrae `merchant_order_id` de los query params de la URL.
+- Lo envía al backend junto con `payment_id` y `collection_id`.
+- Permite al backend usar la estrategia más confiable.
+
+#### 4. `backend/src/app.js`
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+app.use(express.json());
+```
+
+**DESPUÉS**:
+```javascript
+// IMPORTANTE: El webhook necesita el body raw para validar la firma
+// Por eso NO aplicamos express.json() globalmente, sino que lo aplicamos selectivamente
+// El webhook usará express.raw() directamente en su ruta
+
+// Middleware para parsear JSON en todas las rutas EXCEPTO el webhook
+app.use((req, res, next) => {
+  // Si es el webhook, no parsear aquí (se parseará en la ruta con raw body)
+  if (req.path === "/api/pagos/webhook/mercadopago") {
+    return next();
+  }
+  // Para todas las demás rutas, parsear JSON normalmente
+  return express.json()(req, res, next);
+});
+```
+
+**Explicación**:
+- Excluye el webhook del middleware `express.json()` global.
+- Permite que la ruta del webhook use `express.raw()` para capturar el body exacto que Mercado Pago envía.
+- Esto es necesario para validar la firma correctamente.
+
+#### 5. `backend/src/router/pagos.routes.js`
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+router.post("/webhook/mercadopago", webhookMercadoPago);
+```
+
+**DESPUÉS**:
+```javascript
+import express from "express";
+
+// Middleware para capturar body raw del webhook
+const rawBodyMiddleware = express.raw({ type: "application/json" });
+
+// Webhook de Mercado Pago
+router.post("/webhook/mercadopago", rawBodyMiddleware, (req, res, next) => {
+  // Guardar el body raw como string para validar la firma
+  req.rawBody = req.body.toString("utf8");
+  // Parsear el JSON para que req.body esté disponible como objeto
+  try {
+    req.body = JSON.parse(req.rawBody);
+  } catch (e) {
+    req.body = {};
+  }
+  next();
+}, webhookMercadoPago);
+```
+
+**Explicación**:
+- Usa `express.raw()` para capturar el body exacto que Mercado Pago envía (sin parsear).
+- Guarda el body raw en `req.rawBody` para validar la firma.
+- También parsea el JSON en `req.body` para procesarlo normalmente.
+- Esto asegura que la firma se valide con el body exacto que Mercado Pago envió.
+
+#### 6. `backend/src/controllers/pagos.controller.js`
+
+**Función modificada**: `webhookMercadoPago` (líneas ~19-35)
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+const xSignature = req.headers["x-signature"] || "";
+const requestBody = JSON.stringify(req.body);
+
+const firmaValida = validarFirmaWebhook(xSignature, requestBody);
+```
+
+**DESPUÉS**:
+```javascript
+const xSignature = req.headers["x-signature"] || "";
+
+// IMPORTANTE: Usar el body raw capturado en el middleware
+// Esto asegura que el body sea exactamente el mismo que Mercado Pago envió
+// (sin cambios en el orden de propiedades o formato)
+const requestBodyRaw = req.rawBody || JSON.stringify(req.body);
+
+// Usar el body parseado para procesarlo
+const data = req.body;
+
+// Validar firma del webhook antes de procesar (usar el body raw)
+const firmaValida = validarFirmaWebhook(xSignature, requestBodyRaw);
+```
+
+**Explicación**:
+- Usa `req.rawBody` (capturado en el middleware) para validar la firma.
+- Esto asegura que la firma se valide con el body exacto que Mercado Pago envió, sin cambios en el orden de propiedades.
+- El problema anterior era que `JSON.stringify(req.body)` podía cambiar el orden de propiedades, haciendo que la firma no coincidiera.
+
+#### 7. `backend/package.json`
+
+**Cambios principales**:
+
+**ANTES**:
+```json
+"dependencies": {
+  "@aws-sdk/client-s3": "^3.927.0",
+  "bcrypt": "^5.1.1",
+  // ... otras dependencias sin axios
+}
+```
+
+**DESPUÉS**:
+```json
+"dependencies": {
+  "@aws-sdk/client-s3": "^3.927.0",
+  "axios": "^1.7.9", // ← NUEVO
+  "bcrypt": "^5.1.1",
+  // ... otras dependencias
+}
+```
+
+**Explicación**:
+- Agregado `axios` a las dependencias porque `buscarPagosPorOrden` y `buscarPagosPorMerchantOrder` lo necesitan para hacer llamadas directas a la API REST de Mercado Pago.
+- El SDK de Mercado Pago no tiene métodos para buscar por `merchant_order_id` o `external_reference`, por lo que se usa `axios` directamente.
+
+**Explicación General**: 
+- **Soporte para `merchant_order_id`**: El `merchant_order_id` es más confiable que buscar por `external_reference` porque Mercado Pago lo asigna directamente a la orden comercial y contiene los IDs de todos los pagos asociados.
+- **Corrección de validación de firma**: El problema era que `express.json()` parseaba el body antes de validar la firma, cambiando el orden de propiedades. Ahora se captura el body raw primero y se usa para validar la firma, asegurando que coincida exactamente con lo que Mercado Pago envió.
+- **Estrategia de búsqueda mejorada**: Ahora el sistema intenta encontrar el pago en este orden:
+  1. Por `payment_id` directo (si no es preferencia)
+  2. Por `merchant_order_id` (más confiable)
+  3. Por `external_reference` (ID de orden)
+
+**Beneficios**:
+- El sistema puede encontrar pagos incluso cuando `payment_id` y `collection_id` son iguales (preferencia).
+- La validación de la firma del webhook ahora funciona correctamente.
+- Mayor confiabilidad al encontrar pagos usando `merchant_order_id`.
 
 ---
 

@@ -264,10 +264,12 @@ export const buscarPagosPorMerchantOrder = async (merchantOrderId) => {
       },
     });
     
+    console.log(`[buscarPagosPorMerchantOrder] Respuesta completa de Mercado Pago:`, JSON.stringify(response.data, null, 2));
     console.log(`[buscarPagosPorMerchantOrder] Respuesta de Mercado Pago:`, {
       merchant_order_id: response.data?.id,
       payments_count: response.data?.payments?.length || 0,
       status: response.data?.status,
+      payments: response.data?.payments,
     });
     
     if (response.data && response.data.payments && response.data.payments.length > 0) {

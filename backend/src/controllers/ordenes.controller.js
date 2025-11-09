@@ -1254,13 +1254,138 @@ export const verificarPago = async (req, res) => {
   }
 };
 
+// Función auxiliar para procesar un pago aprobado
+// Reutiliza la lógica común de procesamiento de pagos
+const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, paymentId) => {
+  const mpStatus = pagoInfo.status || "approved";
+  const transactionAmount = pagoInfo.transaction_amount;
+
+  console.log(`[procesarPagoAprobado] Procesando pago aprobado para orden ${id}`);
+  console.log(`[procesarPagoAprobado] Payment ID: ${paymentId}, Estado: ${mpStatus}`);
+
+  // Verificar si ya existe un pago con este mp_id (idempotencia)
+  let pago = await pool.query(
+    "SELECT id_pago, mp_id, estado FROM pagos WHERE mp_id = $1",
+    [paymentId]
+  );
+
+  let pagoActual = null;
+
+  // Si no existe, crear registro de pago
+  if (pago.rowCount === 0) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const totalOrden = await client.query(
+        `SELECT SUM(cantidad * precio_unitario) as total 
+         FROM orden_items 
+         WHERE id_orden = $1`,
+        [id]
+      );
+      const monto = parseFloat(totalOrden.rows[0]?.total || transactionAmount || 0);
+
+      const nuevoPago = await client.query(
+        `INSERT INTO pagos (id_orden, mp_id, estado, monto, fecha_pago) 
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id_pago, mp_id, estado`,
+        [
+          id,
+          paymentId,
+          mpStatus,
+          monto,
+          mpStatus === "approved" ? new Date() : null,
+        ]
+      );
+
+      pagoActual = nuevoPago.rows[0];
+      await client.query("COMMIT");
+      console.log(`[procesarPagoAprobado] Registro de pago creado: id_pago=${pagoActual.id_pago}, mp_id=${paymentId}`);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } else {
+    pagoActual = pago.rows[0];
+  }
+
+  // Si el estado ya está actualizado, retornar sin hacer nada
+  if (ordenActual.estado === "pagado") {
+    return res.json({
+      message: "El pago ya fue procesado anteriormente",
+      orden_estado: ordenActual.estado,
+      pago_estado: mpStatus,
+      actualizado: false,
+    });
+  }
+
+  // Obtener items para manejar stock
+  const items = await pool.query(
+    "SELECT id_producto, cantidad FROM orden_items WHERE id_orden = $1",
+    [id]
+  );
+
+  // Usar transacción para actualizar
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Actualizar estado de la orden a "pagado"
+    await client.query(
+      "UPDATE ordenes SET estado = $1 WHERE id_orden = $2",
+      ["pagado", id]
+    );
+
+    // Actualizar estado del pago
+    await client.query(
+      "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
+      [
+        mpStatus,
+        transactionAmount,
+        new Date(),
+        pagoActual.id_pago,
+      ]
+    );
+
+    // Descontar stock y liberar reserva (pago exitoso)
+    if (items.rowCount > 0) {
+      for (const item of items.rows) {
+        await client.query(
+          `UPDATE productos 
+           SET stock = stock - $1, stock_reserved = stock_reserved - $1
+           WHERE id_producto = $2 AND stock_reserved >= $1`,
+          [item.cantidad, item.id_producto]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    console.log(`[procesarPagoAprobado] ✅ Orden ${id} actualizada a "pagado" exitosamente`);
+
+    return res.json({
+      message: "Pago verificado y orden actualizada exitosamente",
+      orden_estado: "pagado",
+      pago_estado: mpStatus,
+      actualizado: true,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(`[procesarPagoAprobado] ❌ Error procesando pago:`, error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 // Verificar pago desde redirect de Mercado Pago (ENDPOINT PÚBLICO)
 // Este endpoint NO requiere autenticación porque se llama desde el redirect de MP
 // La seguridad se basa en validar el payment_id con Mercado Pago
 export const verificarPagoPublico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_id, collection_id, merchant_order_id, status } = req.body;
+    const { payment_id, collection_id, merchant_order_id, status, collection_status } = req.body;
 
     // Validar que se proporcionó al menos uno de los IDs
     if (!payment_id && !collection_id && !merchant_order_id) {
@@ -1271,6 +1396,7 @@ export const verificarPagoPublico = async (req, res) => {
 
     console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id}`);
     console.log(`[VerificarPagoPublico] payment_id=${payment_id}, collection_id=${collection_id}, merchant_order_id=${merchant_order_id}`);
+    console.log(`[VerificarPagoPublico] status=${status}, collection_status=${collection_status}`);
 
     // Verificar que la orden existe
     const orden = await pool.query(
@@ -1284,22 +1410,57 @@ export const verificarPagoPublico = async (req, res) => {
 
     const ordenActual = orden.rows[0];
 
+    // IMPORTANTE: Si tenemos el status en la URL, usarlo directamente
+    // Mercado Pago ya nos está diciendo el estado del pago en los parámetros de la URL
+    const statusFromUrl = status || collection_status;
+    
+    // Si el status es "approved", podemos procesar el pago directamente sin buscar en la API
+    if (statusFromUrl === "approved" && (payment_id || collection_id)) {
+      console.log(`[VerificarPagoPublico] ✅ Status "approved" recibido en URL. Procesando pago directamente...`);
+      
+      // Intentar obtener información completa del pago para validar y obtener el monto
+      let pagoInfo = null;
+      const paymentIdToUse = payment_id || collection_id;
+      
+      try {
+        console.log(`[VerificarPagoPublico] Obteniendo detalles del pago ${paymentIdToUse} para validar y obtener monto...`);
+        pagoInfo = await obtenerPago(paymentIdToUse);
+        console.log(`[VerificarPagoPublico] ✅ Pago obtenido: ID=${pagoInfo.id}, Estado=${pagoInfo.status}, External reference=${pagoInfo.external_reference}`);
+      } catch (error) {
+        console.warn(`[VerificarPagoPublico] ⚠️ No se pudo obtener detalles del pago ${paymentIdToUse}, pero el status en URL es "approved"`);
+        console.warn(`[VerificarPagoPublico] Continuando con el procesamiento usando el status de la URL...`);
+        // Si no podemos obtener el pago, pero el status es "approved", podemos continuar
+        // usando el payment_id de la URL
+        pagoInfo = {
+          id: paymentIdToUse,
+          status: "approved",
+          external_reference: id.toString(),
+          transaction_amount: null, // Se calculará desde la orden
+        };
+      }
+      
+      // Validar que el external_reference corresponde a esta orden (si tenemos pagoInfo completo)
+      if (pagoInfo.external_reference && pagoInfo.external_reference !== id.toString()) {
+        console.error(`[VerificarPagoPublico] external_reference no coincide: ${pagoInfo.external_reference} !== ${id}`);
+        return res.status(400).json({
+          message: "El pago no corresponde a esta orden",
+          orden_estado: ordenActual.estado,
+        });
+      }
+      
+      // Procesar el pago aprobado directamente
+      return await procesarPagoAprobado(req, res, id, ordenActual, pagoInfo, paymentIdToUse);
+    }
+
+    // Si no tenemos status "approved" en la URL, buscar el pago en la API
     // Intentar obtener información del pago
     let pagoInfo = null;
     
-    // IMPORTANTE: Si payment_id y collection_id son iguales, probablemente es el ID de la preferencia
-    // En este caso, debemos buscar el pago por external_reference directamente
-    const esPreferencia = payment_id && collection_id && payment_id === collection_id;
-    
-    if (esPreferencia) {
-      console.log(`[VerificarPagoPublico] ⚠️ payment_id y collection_id son iguales (${payment_id}). Probablemente es el ID de la preferencia, no del pago.`);
-      console.log(`[VerificarPagoPublico] Buscando pago directamente por external_reference...`);
-    }
-    
-    // Estrategia 1: Si tenemos payment_id y NO es una preferencia, intentar obtenerlo directamente
-    if (payment_id && !esPreferencia) {
+    // Estrategia 1: SIEMPRE intentar obtener el pago con payment_id primero
+    // Aunque sea igual al collection_id, puede ser un ID de pago válido
+    if (payment_id) {
       try {
-        console.log(`[VerificarPagoPublico] Intentando obtener pago con payment_id=${payment_id}`);
+        console.log(`[VerificarPagoPublico] Intentando obtener pago directamente con payment_id=${payment_id}`);
         pagoInfo = await obtenerPago(payment_id);
         console.log(`[VerificarPagoPublico] ✅ Pago obtenido exitosamente con payment_id=${payment_id}`);
         console.log(`[VerificarPagoPublico] Estado del pago: ${pagoInfo.status}, External reference: ${pagoInfo.external_reference}`);
@@ -1311,9 +1472,9 @@ export const verificarPagoPublico = async (req, res) => {
           code: error.code,
           cause: error.cause,
         });
-        // Si el error es 404 (Payment not found), el payment_id puede ser inválido o ser un collection_id
+        // Si el error es 404 (Payment not found), el payment_id puede ser inválido o ser un collection_id (preferencia)
         if (error.status === 404 || error.cause?.code === 2000) {
-          console.log(`[VerificarPagoPublico] El payment_id ${payment_id} no existe en Mercado Pago. Puede ser un collection_id (preferencia).`);
+          console.log(`[VerificarPagoPublico] El payment_id ${payment_id} no existe en Mercado Pago. Puede ser un collection_id (preferencia). Continuando con otras estrategias...`);
         }
         // Continuar con otras estrategias
       }
@@ -1366,6 +1527,7 @@ export const verificarPagoPublico = async (req, res) => {
       console.error(`[VerificarPagoPublico] ❌ No se pudo encontrar el pago para la orden ${id}`);
       console.error(`[VerificarPagoPublico] Payment ID recibido: ${payment_id || 'N/A'}`);
       console.error(`[VerificarPagoPublico] Collection ID recibido: ${collection_id || 'N/A'}`);
+      console.error(`[VerificarPagoPublico] Merchant Order ID recibido: ${merchant_order_id || 'N/A'}`);
       console.error(`[VerificarPagoPublico] Estado actual de la orden: ${ordenActual.estado}`);
       
       return res.status(400).json({

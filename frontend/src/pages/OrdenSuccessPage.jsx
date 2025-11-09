@@ -33,16 +33,25 @@ const OrdenSuccessPage = () => {
         let pagoVerificado = false;
         let estadoVerificado = null;
         
-        // Enviar payment_id, collection_id o merchant_order_id al backend
+        // Enviar payment_id, collection_id, merchant_order_id y status al backend
         if (paymentId || collectionId || merchantOrderId) {
           try {
             console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
             
-            // Preparar body con los IDs disponibles
+            // Preparar body con los IDs disponibles y el status
             const body = {};
             if (paymentId) body.payment_id = paymentId;
             if (collectionId) body.collection_id = collectionId;
             if (merchantOrderId) body.merchant_order_id = merchantOrderId;
+            
+            // IMPORTANTE: Enviar también el status de la URL
+            // Mercado Pago ya nos está diciendo el estado del pago en los parámetros
+            const status = searchParams.get("status");
+            const collectionStatus = searchParams.get("collection_status");
+            if (status) body.status = status;
+            if (collectionStatus) body.collection_status = collectionStatus;
+            
+            console.log("[OrdenSuccessPage] Status recibido en URL:", { status, collectionStatus });
             
             // Usar endpoint público que no requiere autenticación
             const verificarRes = await ordenesApi.verificarPagoPublico(id, body);

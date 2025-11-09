@@ -26,6 +26,14 @@ export const webhookMercadoPago = async (req, res) => {
     // (sin cambios en el orden de propiedades o formato)
     const requestBodyRaw = req.rawBody || JSON.stringify(req.body);
     
+    // Logging para debugging de firma
+    console.log("[webhookMercadoPago] Debugging firma:", {
+      hasRawBody: !!req.rawBody,
+      rawBodyLength: req.rawBody?.length || 0,
+      rawBodyPreview: req.rawBody?.substring(0, 100) || "N/A",
+      xSignature: xSignature.substring(0, 50) + "...",
+    });
+    
     // Usar el body parseado para procesarlo
     const data = req.body;
 
