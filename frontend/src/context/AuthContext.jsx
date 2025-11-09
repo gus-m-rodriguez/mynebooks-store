@@ -132,9 +132,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const checkAuth = async () => {
       const token = Cookie.get("token");
+      
+      // Verificar si estamos en una ruta pública de pago
+      // En estas rutas, no debemos limpiar la sesión aunque haya errores
+      const currentPath = window.location.pathname;
+      const isPublicPaymentRoute = 
+        currentPath.includes('/ordenes/') && 
+        (currentPath.includes('/success') || 
+         currentPath.includes('/failure') || 
+         currentPath.includes('/pending'));
+      
       if (token) {
         // Si hay token, asumir que la sesión es válida inicialmente
-      // Esto evita redirecciones innecesarias al login
+        // Esto evita redirecciones innecesarias al login
         setIsAuth(true);
         
         try {
@@ -148,7 +158,19 @@ export function AuthProvider({ children }) {
             status: error.response?.status,
             message: error.message,
             code: error.code,
+            isPublicPaymentRoute,
           });
+          
+          // Si estamos en una ruta pública de pago, NO limpiar la sesión
+          // incluso si hay un 401, porque el usuario puede no tener sesión activa
+          // pero el pago ya fue procesado
+          if (isPublicPaymentRoute) {
+            console.log("[AuthContext] ⚠️ Ruta pública de pago detectada. Manteniendo sesión aunque haya error.");
+            console.log("[AuthContext] El token seguirá en las cookies para permitir acceso después del pago.");
+            // Mantener isAuth como true para evitar redirecciones innecesarias
+            setIsAuth(true);
+            return; // Salir temprano, no limpiar nada
+          }
           
           // Solo limpiar la sesión si es un error 401 (no autorizado)
           // No limpiar por errores de red temporales o otros errores

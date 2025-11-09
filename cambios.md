@@ -1374,6 +1374,74 @@ await client.query(
 
 ---
 
+---
+
+## Fix: Sesión se cierra al volver de Mercado Pago
+
+**Fecha**: 2025-11-09
+
+### Problema Identificado
+
+**Sesión se cierra**: Aunque se implementaron mejoras previas, la sesión del usuario seguía cerrándose al volver de Mercado Pago, incluso en rutas públicas de pago.
+
+**Causa raíz**:
+- El `AuthContext` estaba limpiando la sesión incluso en rutas públicas de pago cuando había un error 401.
+- Esto causaba que el usuario fuera redirigido al login innecesariamente, incluso cuando el pago ya había sido procesado correctamente.
+
+### Solución Implementada
+
+**Archivo**: `frontend/src/context/AuthContext.jsx`
+
+**Función modificada**: `checkAuth` en el `useEffect` (línea ~132)
+
+**Cambio**:
+- Se agregó detección de rutas públicas de pago (`/ordenes/:id/success`, `/failure`, `/pending`).
+- Si estamos en una ruta pública de pago, NO se limpia la sesión incluso si hay un error 401.
+- Esto permite que el usuario mantenga su sesión al volver de Mercado Pago, incluso si el token no es válido temporalmente.
+
+**Código agregado**:
+```javascript
+// Verificar si estamos en una ruta pública de pago
+// En estas rutas, no debemos limpiar la sesión aunque haya errores
+const currentPath = window.location.pathname;
+const isPublicPaymentRoute = 
+  currentPath.includes('/ordenes/') && 
+  (currentPath.includes('/success') || 
+   currentPath.includes('/failure') || 
+   currentPath.includes('/pending'));
+
+if (token) {
+  // ... código de verificación ...
+  
+  catch (error) {
+    // Si estamos en una ruta pública de pago, NO limpiar la sesión
+    // incluso si hay un 401, porque el usuario puede no tener sesión activa
+    // pero el pago ya fue procesado
+    if (isPublicPaymentRoute) {
+      console.log("[AuthContext] ⚠️ Ruta pública de pago detectada. Manteniendo sesión aunque haya error.");
+      console.log("[AuthContext] El token seguirá en las cookies para permitir acceso después del pago.");
+      // Mantener isAuth como true para evitar redirecciones innecesarias
+      setIsAuth(true);
+      return; // Salir temprano, no limpiar nada
+    }
+    
+    // ... resto del código de manejo de errores ...
+  }
+}
+```
+
+**Explicación**:
+- Las rutas públicas de pago no requieren autenticación para funcionar correctamente.
+- El pago ya fue procesado por `verificarPagoPublico`, así que no es crítico si el usuario no tiene sesión activa.
+- Mantener `isAuth=true` evita redirecciones innecesarias al login.
+
+### Resultado
+
+- La sesión del usuario ya no se cierra al volver de Mercado Pago en rutas públicas de pago.
+- El usuario puede ver la página de éxito del pago sin ser redirigido al login.
+
+---
+
 ## Próximos Pasos
 
 1. Hacer commit y push de los cambios.
