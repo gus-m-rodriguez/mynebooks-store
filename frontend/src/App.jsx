@@ -43,8 +43,8 @@ function App() {
         className="fixed inset-0 z-0 pointer-events-none opacity-10"
         style={{
           backgroundImage: `url(${myneblueImage})`,
-          backgroundRepeat: 'repeat',
-          backgroundSize: 'auto',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
