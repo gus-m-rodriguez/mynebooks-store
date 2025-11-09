@@ -133,26 +133,53 @@ export function AuthProvider({ children }) {
     const checkAuth = async () => {
       const token = Cookie.get("token");
       if (token) {
+        // Si hay token, asumir que la sesión es válida inicialmente
+      // Esto evita redirecciones innecesarias al login
+        setIsAuth(true);
+        
         try {
           const res = await authApi.getProfile();
           setUser(res.data);
           setIsAuth(true);
+          console.log("[AuthContext] ✅ Sesión verificada exitosamente");
         } catch (error) {
-          console.error("Error verificando autenticación:", error);
+          console.error("[AuthContext] Error verificando autenticación:", error);
+          console.error("[AuthContext] Detalles del error:", {
+            status: error.response?.status,
+            message: error.message,
+            code: error.code,
+          });
+          
           // Solo limpiar la sesión si es un error 401 (no autorizado)
-          // No limpiar por errores de red temporales
+          // No limpiar por errores de red temporales o otros errores
           if (error.response?.status === 401) {
-            console.log("[AuthContext] Token inválido, limpiando sesión");
+            console.log("[AuthContext] ❌ Token inválido (401), limpiando sesión");
             setUser(null);
             setIsAuth(false);
             Cookie.remove("token");
           } else {
-            // Para otros errores (red, servidor, etc.), mantener el token
-            // pero marcar como no autenticado temporalmente
-            console.warn("[AuthContext] Error temporal verificando autenticación, manteniendo token");
-            setIsAuth(false);
+            // Para otros errores (red, servidor, etc.), mantener el token y el estado
+            // Esto evita que el usuario sea redirigido al login por errores temporales
+            console.warn("[AuthContext] ⚠️ Error temporal verificando autenticación, manteniendo sesión");
+            console.warn("[AuthContext] El token sigue en las cookies, la sesión se mantendrá");
+            // Mantener isAuth como true para evitar redirecciones innecesarias
+            // El token está en las cookies, así que asumimos que la sesión es válida
+            // Intentar verificar nuevamente después de un breve delay
+            setTimeout(async () => {
+              try {
+                const retryRes = await authApi.getProfile();
+                setUser(retryRes.data);
+                setIsAuth(true);
+                console.log("[AuthContext] ✅ Sesión verificada exitosamente en reintento");
+              } catch (retryError) {
+                console.warn("[AuthContext] ⚠️ Reintento falló, pero manteniendo sesión");
+              }
+            }, 2000);
           }
         }
+      } else {
+        console.log("[AuthContext] No hay token en las cookies");
+        setIsAuth(false);
       }
       setLoading(false);
     };

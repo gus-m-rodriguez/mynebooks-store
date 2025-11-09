@@ -547,6 +547,169 @@ useEffect(() => {
 
 ---
 
+### 11. Manejo de collection_id y Búsqueda de Pagos por Orden
+
+**Problema Identificado**:
+- Mercado Pago en Checkout Pro puede enviar `collection_id` (ID de la preferencia) en lugar de `payment_id` (ID del pago real) en la URL de redirect.
+- Cuando se intenta verificar el pago con `payment_id`, Mercado Pago retorna error 400 indicando que el ID no es válido.
+- Esto causa que el pago no se registre y la orden quede en estado "pendiente".
+
+**Archivo**: `backend/src/libs/mercadopago.js`
+
+**Nuevas funciones agregadas**:
+
+1. **`buscarPagosPorOrden`** (líneas ~165-193):
+```javascript
+export const buscarPagosPorOrden = async (ordenId) => {
+  try {
+    // Buscar pagos usando la API de search de Mercado Pago
+    const searchParams = {
+      external_reference: ordenId.toString(),
+      limit: 10,
+    };
+    
+    // Usar la API REST directamente
+    const axios = (await import("axios")).default;
+    const response = await axios.get("https://api.mercadopago.com/v1/payments/search", {
+      params: searchParams,
+      headers: {
+        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      },
+    });
+    
+    if (response.data && response.data.results && response.data.results.length > 0) {
+      // Retornar el pago más reciente
+      return response.data.results[0];
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error buscando pagos por orden:", error);
+    throw error;
+  }
+};
+```
+
+2. **`obtenerPreferencia`** (líneas ~198-206):
+```javascript
+export const obtenerPreferencia = async (preferenceId) => {
+  try {
+    const result = await preference.get({ id: preferenceId });
+    return result;
+  } catch (error) {
+    console.error("Error obteniendo preferencia de Mercado Pago:", error);
+    throw error;
+  }
+};
+```
+
+**Archivo**: `backend/src/controllers/ordenes.controller.js`
+
+**Función modificada**: `verificarPagoPublico` (líneas ~1260-1333)
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+const { payment_id, status } = req.body;
+
+// Validar que se proporcionó payment_id
+if (!payment_id) {
+  return res.status(400).json({
+    message: "payment_id es requerido",
+  });
+}
+
+// Intentar obtener pago directamente
+pagoInfo = await obtenerPago(payment_id);
+```
+
+**DESPUÉS**:
+```javascript
+const { payment_id, collection_id, status } = req.body;
+
+// Validar que se proporcionó al menos uno de los IDs
+if (!payment_id && !collection_id) {
+  return res.status(400).json({
+    message: "payment_id o collection_id es requerido",
+  });
+}
+
+// Estrategia 1: Si tenemos payment_id, intentar obtenerlo directamente
+if (payment_id) {
+  try {
+    pagoInfo = await obtenerPago(payment_id);
+  } catch (error) {
+    console.warn(`No se pudo obtener pago con payment_id=${payment_id}`);
+    // Continuar con otras estrategias
+  }
+}
+
+// Estrategia 2: Si no funcionó, buscar pagos por external_reference
+if (!pagoInfo) {
+  try {
+    const { buscarPagosPorOrden } = await import("../libs/mercadopago.js");
+    pagoInfo = await buscarPagosPorOrden(id);
+  } catch (error) {
+    console.warn(`No se pudo buscar pagos por orden:`, error.message);
+  }
+}
+
+// Si aún no tenemos pagoInfo, retornar error con sugerencia
+if (!pagoInfo) {
+  return res.status(400).json({
+    message: "No se pudo encontrar el pago en Mercado Pago. El pago puede estar pendiente o el ID proporcionado no es válido.",
+    orden_estado: ordenActual.estado,
+    sugerencia: "Espera unos minutos y verifica nuevamente, o espera a que el webhook procese el pago.",
+  });
+}
+```
+
+**Archivo**: `frontend/src/pages/OrdenSuccessPage.jsx`
+
+**Cambios** (líneas ~19-67):
+
+**ANTES**:
+```javascript
+// Extraer payment_id de los query params
+const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
+
+if (paymentId) {
+  const verificarRes = await ordenesApi.verificarPagoPublico(id, { payment_id: paymentId });
+}
+```
+
+**DESPUÉS**:
+```javascript
+// Extraer payment_id o collection_id de los query params
+// En Checkout Pro, Mercado Pago puede enviar collection_id (preferencia) o payment_id (pago)
+const paymentId = searchParams.get("payment_id");
+const collectionId = searchParams.get("collection_id");
+
+// Log de todos los query params para debugging
+console.log("[OrdenSuccessPage] Query params completos:", Object.fromEntries(searchParams.entries()));
+console.log("[OrdenSuccessPage] Payment ID extraído:", paymentId);
+console.log("[OrdenSuccessPage] Collection ID extraído:", collectionId);
+
+// Enviar payment_id o collection_id al backend
+if (paymentId || collectionId) {
+  // Preparar body con los IDs disponibles
+  const body = {};
+  if (paymentId) body.payment_id = paymentId;
+  if (collectionId) body.collection_id = collectionId;
+  
+  const verificarRes = await ordenesApi.verificarPagoPublico(id, body);
+}
+```
+
+**Explicación**: 
+- El sistema ahora maneja tanto `payment_id` como `collection_id`.
+- Si `payment_id` no funciona, busca pagos por `external_reference` (ID de la orden).
+- Esto resuelve el problema cuando Mercado Pago envía `collection_id` en lugar de `payment_id`.
+- El frontend envía ambos parámetros si están disponibles, permitiendo al backend elegir la mejor estrategia.
+
+---
+
 ## Flujo Completo Actualizado
 
 1. **Usuario inicia pago**: 
@@ -559,11 +722,13 @@ useEffect(() => {
    - Mercado Pago redirige al usuario a `/ordenes/:id/success?payment_id=...&status=approved`.
 
 3. **Usuario llega a la página de success**:
-   - `OrdenSuccessPage` extrae el `payment_id` de la URL.
-   - Llama a `verificarPagoPublico` (endpoint público) con el `payment_id`.
-   - El backend:
-     - Valida el `payment_id` con Mercado Pago.
-     - Verifica que corresponde a la orden (mediante `external_reference`).
+   - `OrdenSuccessPage` extrae el `payment_id` y/o `collection_id` de la URL.
+   - Llama a `verificarPagoPublico` (endpoint público) con ambos parámetros si están disponibles.
+   - El backend intenta encontrar el pago usando dos estrategias:
+     - **Estrategia 1**: Si hay `payment_id`, intenta obtenerlo directamente de Mercado Pago.
+     - **Estrategia 2**: Si falla o no hay `payment_id`, busca pagos por `external_reference` (ID de la orden).
+   - Una vez encontrado el pago, el backend:
+     - Valida que corresponde a la orden (mediante `external_reference`).
      - Crea o actualiza el registro de pago en la tabla `pagos`.
      - Actualiza el estado de la orden según el resultado:
        - `approved` → `"pagado"` (descuenta stock y libera reserva)
@@ -585,13 +750,14 @@ useEffect(() => {
 ## Archivos Modificados
 
 1. `frontend/package.json` - Agregado flag `-s` al comando start
-2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado
-3. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
-4. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` de URL + uso de endpoint público + mejor manejo de estados
-5. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
-6. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
-7. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales
-8. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
+2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado + manejo de `collection_id`
+3. `backend/src/libs/mercadopago.js` - Agregadas funciones `buscarPagosPorOrden` y `obtenerPreferencia`
+4. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
+5. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` y `collection_id` de URL + uso de endpoint público + mejor manejo de estados + logging mejorado
+6. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
+7. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
+8. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales
+9. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
 
 ---
 
@@ -622,6 +788,7 @@ useEffect(() => {
 - Las cookies están configuradas para funcionar correctamente en producción con dominios diferentes (frontend y backend en Railway).
 - **AuthContext mejorado**: Ya no pierde la sesión por errores temporales de red o servidor, solo por tokens inválidos (401).
 - **Endpoint público seguro**: La seguridad se basa en validar el `payment_id` con Mercado Pago antes de procesar, no en autenticación del usuario.
+- **Manejo de collection_id**: El sistema ahora maneja tanto `payment_id` como `collection_id`, y busca pagos por `external_reference` si el `payment_id` no es válido o no está disponible.
 
 ## Estados que Actualiza el Endpoint Público
 

@@ -150,10 +150,18 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
  */
 export const obtenerPago = async (paymentId) => {
   try {
+    console.log(`[obtenerPago] Consultando pago con ID: ${paymentId}`);
     const result = await payment.get({ id: paymentId });
+    console.log(`[obtenerPago] ✅ Pago obtenido exitosamente: ID=${result.id}, Estado=${result.status}`);
     return result;
   } catch (error) {
-    console.error("Error obteniendo pago de Mercado Pago:", error);
+    console.error("[obtenerPago] ❌ Error obteniendo pago de Mercado Pago:", {
+      paymentId,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      cause: error.cause,
+    });
     throw error;
   }
 };
@@ -171,6 +179,8 @@ export const buscarPagosPorOrden = async (ordenId) => {
       limit: 10,
     };
     
+    console.log(`[buscarPagosPorOrden] Buscando pagos para orden ${ordenId} con parámetros:`, searchParams);
+    
     // Usar la API REST directamente ya que el SDK puede no tener este método
     const axios = (await import("axios")).default;
     const response = await axios.get("https://api.mercadopago.com/v1/payments/search", {
@@ -180,14 +190,26 @@ export const buscarPagosPorOrden = async (ordenId) => {
       },
     });
     
+    console.log(`[buscarPagosPorOrden] Respuesta de Mercado Pago:`, {
+      total: response.data?.paging?.total || 0,
+      results_count: response.data?.results?.length || 0,
+    });
+    
     if (response.data && response.data.results && response.data.results.length > 0) {
-      // Retornar el pago más reciente
-      return response.data.results[0];
+      // Retornar el pago más reciente (el primero de la lista)
+      const pagoMasReciente = response.data.results[0];
+      console.log(`[buscarPagosPorOrden] ✅ Pago encontrado: ID=${pagoMasReciente.id}, Estado=${pagoMasReciente.status}`);
+      return pagoMasReciente;
     }
     
+    console.log(`[buscarPagosPorOrden] ⚠️ No se encontraron pagos para la orden ${ordenId}`);
     return null;
   } catch (error) {
-    console.error("Error buscando pagos por orden:", error);
+    console.error("[buscarPagosPorOrden] ❌ Error buscando pagos por orden:", {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
     throw error;
   }
 };
