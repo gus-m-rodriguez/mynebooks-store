@@ -1327,6 +1327,20 @@ const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, payment
     [id]
   );
 
+  // Calcular monto desde la orden si transactionAmount es null o undefined
+  // Esto es necesario cuando no se pudo obtener el pago de MP (404) pero el status es "approved"
+  let montoFinal = transactionAmount;
+  if (montoFinal == null || montoFinal === undefined) {
+    const totalOrden = await pool.query(
+      `SELECT SUM(cantidad * precio_unitario) as total 
+       FROM orden_items 
+       WHERE id_orden = $1`,
+      [id]
+    );
+    montoFinal = parseFloat(totalOrden.rows[0]?.total || 0);
+    console.log(`[procesarPagoAprobado] Monto calculado desde orden: ${montoFinal}`);
+  }
+
   // Usar transacción para actualizar
   const client = await pool.connect();
   try {
@@ -1338,12 +1352,12 @@ const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, payment
       ["pagado", id]
     );
 
-    // Actualizar estado del pago
+    // Actualizar estado del pago (usar montoFinal que nunca será null)
     await client.query(
       "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
       [
         mpStatus,
-        transactionAmount,
+        montoFinal,
         new Date(),
         pagoActual.id_pago,
       ]
@@ -1551,15 +1565,18 @@ export const verificarPagoPublico = async (req, res) => {
 
     const mpStatus = pagoInfo.status;
     const transactionAmount = pagoInfo.transaction_amount;
+    // Usar el ID real del pago encontrado, no el payment_id de la URL (que puede ser collection_id)
+    const mpIdReal = pagoInfo.id.toString();
 
     console.log(`[VerificarPagoPublico] Estado en MP: ${mpStatus}, Estado actual en BD: ${ordenActual.estado}`);
-    console.log(`[VerificarPagoPublico] Payment ID: ${payment_id}, Orden ID: ${id}`);
+    console.log(`[VerificarPagoPublico] Payment ID recibido: ${payment_id}, MP ID real: ${mpIdReal}, Orden ID: ${id}`);
     console.log(`[VerificarPagoPublico] External reference del pago: ${pagoInfo.external_reference}`);
 
     // Verificar si ya existe un pago con este mp_id (idempotencia)
+    // Usar el ID real del pago encontrado, no el payment_id de la URL
     let pago = await pool.query(
       "SELECT id_pago, mp_id, estado FROM pagos WHERE mp_id = $1",
-      [payment_id]
+      [mpIdReal]
     );
 
     let pagoActual = null;
@@ -1584,7 +1601,7 @@ export const verificarPagoPublico = async (req, res) => {
            RETURNING id_pago, mp_id, estado`,
           [
             id,
-            payment_id,
+            mpIdReal,
             mpStatus,
             monto,
             mpStatus === "approved" ? new Date() : null,
@@ -1593,7 +1610,7 @@ export const verificarPagoPublico = async (req, res) => {
 
         pagoActual = nuevoPago.rows[0];
         await client.query("COMMIT");
-        console.log(`[VerificarPagoPublico] Registro de pago creado: id_pago=${pagoActual.id_pago}, mp_id=${payment_id}`);
+        console.log(`[VerificarPagoPublico] Registro de pago creado: id_pago=${pagoActual.id_pago}, mp_id=${mpIdReal}`);
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -1667,12 +1684,24 @@ export const verificarPagoPublico = async (req, res) => {
         [nuevoEstado, id]
       );
 
+      // Calcular monto si transactionAmount es null
+      let montoFinal = transactionAmount;
+      if (montoFinal === null || montoFinal === undefined) {
+        const totalOrden = await client.query(
+          `SELECT SUM(cantidad * precio_unitario) as total 
+           FROM orden_items 
+           WHERE id_orden = $1`,
+          [id]
+        );
+        montoFinal = parseFloat(totalOrden.rows[0]?.total || 0);
+      }
+
       // Actualizar estado del pago
       await client.query(
         "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
         [
           mpStatus,
-          transactionAmount,
+          montoFinal,
           mpStatus === "approved" ? new Date() : null,
           pagoActual.id_pago,
         ]
@@ -1730,7 +1759,7 @@ export const verificarPagoPublico = async (req, res) => {
         orden_estado: nuevoEstado,
         pago_estado: mpStatus,
         actualizado: true,
-        payment_id: payment_id,
+        payment_id: mpIdReal,
       });
     } catch (error) {
       await client.query("ROLLBACK");

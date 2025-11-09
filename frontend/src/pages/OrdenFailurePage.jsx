@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ordenesApi } from "../api/ordenes.api.js";
 import { Button, Alert, Loading, Card } from "../components/ui/index.js";
 import { FaTimesCircle, FaRedo } from "react-icons/fa";
@@ -7,6 +7,7 @@ import { FaTimesCircle, FaRedo } from "react-icons/fa";
 const OrdenFailurePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orden, setOrden] = useState(null);
@@ -15,18 +16,40 @@ const OrdenFailurePage = () => {
     const verificarOrden = async () => {
       try {
         setLoading(true);
-        const res = await ordenesApi.obtener(id);
-        setOrden(res.data);
         
-        // Si la orden aún está en "en_pago", intentar verificar el pago
-        if (res.data.estado === "en_pago") {
+        // Extraer parámetros de la URL de Mercado Pago
+        const paymentId = searchParams.get("payment_id");
+        const collectionId = searchParams.get("collection_id");
+        const merchantOrderId = searchParams.get("merchant_order_id");
+        const status = searchParams.get("status");
+        const collectionStatus = searchParams.get("collection_status");
+        
+        // Si hay parámetros de MP, usar endpoint público (no requiere autenticación)
+        if (paymentId || collectionId || merchantOrderId) {
           try {
-            await ordenesApi.verificarPago(id);
-            const resActualizado = await ordenesApi.obtener(id);
-            setOrden(resActualizado.data);
+            console.log("[OrdenFailurePage] Verificando pago público con Mercado Pago para orden:", id);
+            
+            const body = {};
+            if (paymentId) body.payment_id = paymentId;
+            if (collectionId) body.collection_id = collectionId;
+            if (merchantOrderId) body.merchant_order_id = merchantOrderId;
+            if (status) body.status = status;
+            if (collectionStatus) body.collection_status = collectionStatus;
+            
+            await ordenesApi.verificarPagoPublico(id, body);
           } catch (err) {
-            console.error("Error verificando pago:", err);
+            console.error("[OrdenFailurePage] Error verificando pago público:", err);
           }
+        }
+        
+        // Intentar obtener el estado de la orden
+        try {
+          const res = await ordenesApi.obtener(id);
+          setOrden(res.data);
+        } catch (err) {
+          console.warn("[OrdenFailurePage] No se pudo obtener la orden (puede ser por falta de sesión):", err);
+          // Si no hay sesión, mostrar estado genérico
+          setOrden({ estado: "rechazado" });
         }
       } catch (err) {
         console.error("Error obteniendo orden:", err);
@@ -39,7 +62,7 @@ const OrdenFailurePage = () => {
     if (id) {
       verificarOrden();
     }
-  }, [id]);
+  }, [id, navigate, searchParams]);
 
   if (loading) {
     return (

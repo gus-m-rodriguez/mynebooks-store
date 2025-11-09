@@ -126,7 +126,7 @@ const OrdenSuccessPage = () => {
     if (id) {
       verificarOrden();
     }
-  }, [id, navigate]);
+  }, [id, navigate, searchParams]);
 
   if (loading) {
     return (

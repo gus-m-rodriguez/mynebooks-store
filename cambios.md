@@ -1302,6 +1302,78 @@ const firmaValida = validarFirmaWebhook(xSignature, requestBodyRaw);
 
 ---
 
+---
+
+## Fix: Error "null value in column monto" al procesar pago aprobado
+
+**Fecha**: 2025-11-09
+
+### Problema Identificado
+
+Cuando el sistema intentaba procesar un pago aprobado desde la URL de redirect de Mercado Pago, ocurría el siguiente error:
+
+```
+error: null value in column "monto" of relation "pagos" violates not-null constraint
+```
+
+**Causa raíz**:
+- Cuando Mercado Pago devuelve `status=approved` en la URL, el sistema intenta obtener los detalles del pago desde la API de MP.
+- En el sandbox de Mercado Pago, a veces el pago aún no está disponible inmediatamente (devuelve 404 "Payment not found").
+- En este caso, el código creaba un objeto `pagoInfo` con `transaction_amount: null`.
+- Luego, al intentar actualizar el registro de pago en la base de datos, se pasaba `null` como monto, violando la restricción NOT NULL de la columna `monto`.
+
+### Solución Implementada
+
+**Archivo**: `backend/src/controllers/ordenes.controller.js`
+
+**Función modificada**: `procesarPagoAprobado` (línea ~1257)
+
+**Cambio**:
+- Se agregó lógica para calcular el monto desde la orden cuando `transactionAmount` es `null` o `undefined`.
+- Antes de actualizar el pago, se verifica si `transactionAmount` tiene valor.
+- Si es `null`, se calcula el total desde `orden_items` de la misma forma que se hace al crear el registro inicial.
+- Esto asegura que `montoFinal` nunca sea `null` al actualizar la base de datos.
+
+**Código agregado**:
+```javascript
+// Calcular monto desde la orden si transactionAmount es null o undefined
+// Esto es necesario cuando no se pudo obtener el pago de MP (404) pero el status es "approved"
+let montoFinal = transactionAmount;
+if (montoFinal == null || montoFinal === undefined) {
+  const totalOrden = await pool.query(
+    `SELECT SUM(cantidad * precio_unitario) as total 
+     FROM orden_items 
+     WHERE id_orden = $1`,
+    [id]
+  );
+  montoFinal = parseFloat(totalOrden.rows[0]?.total || 0);
+  console.log(`[procesarPagoAprobado] Monto calculado desde orden: ${montoFinal}`);
+}
+```
+
+**Línea modificada** (actualización del pago):
+```javascript
+// Antes:
+await client.query(
+  "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
+  [mpStatus, transactionAmount, new Date(), pagoActual.id_pago]
+);
+
+// Después:
+await client.query(
+  "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
+  [mpStatus, montoFinal, new Date(), pagoActual.id_pago]  // ← Usa montoFinal que nunca es null
+);
+```
+
+### Resultado
+
+- El sistema ahora puede procesar pagos aprobados incluso cuando Mercado Pago devuelve 404 al intentar obtener los detalles del pago.
+- El monto se calcula correctamente desde la orden cuando no está disponible desde la API de MP.
+- Se elimina el error de violación de restricción NOT NULL en la columna `monto`.
+
+---
+
 ## Próximos Pasos
 
 1. Hacer commit y push de los cambios.
