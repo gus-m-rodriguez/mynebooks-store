@@ -16,23 +16,25 @@ const OrdenSuccessPage = () => {
     const verificarOrden = async () => {
       try {
         setLoading(true);
-        // Extraer payment_id o collection_id de los query params
-        // En Checkout Pro, Mercado Pago puede enviar collection_id (preferencia) o payment_id (pago)
+        // Extraer payment_id, collection_id y merchant_order_id de los query params
+        // En Checkout Pro, Mercado Pago puede enviar collection_id (preferencia), payment_id (pago) o merchant_order_id (orden comercial)
         const paymentId = searchParams.get("payment_id");
         const collectionId = searchParams.get("collection_id");
+        const merchantOrderId = searchParams.get("merchant_order_id");
         
         // Log de todos los query params para debugging
         console.log("[OrdenSuccessPage] Query params completos:", Object.fromEntries(searchParams.entries()));
         console.log("[OrdenSuccessPage] Payment ID extraído:", paymentId);
         console.log("[OrdenSuccessPage] Collection ID extraído:", collectionId);
+        console.log("[OrdenSuccessPage] Merchant Order ID extraído:", merchantOrderId);
         
         // Primero intentar verificar el pago con Mercado Pago (esto actualiza el estado si el pago fue aprobado)
         // Usar endpoint público que no requiere autenticación
         let pagoVerificado = false;
         let estadoVerificado = null;
         
-        // Enviar payment_id o collection_id al backend
-        if (paymentId || collectionId) {
+        // Enviar payment_id, collection_id o merchant_order_id al backend
+        if (paymentId || collectionId || merchantOrderId) {
           try {
             console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
             
@@ -40,6 +42,7 @@ const OrdenSuccessPage = () => {
             const body = {};
             if (paymentId) body.payment_id = paymentId;
             if (collectionId) body.collection_id = collectionId;
+            if (merchantOrderId) body.merchant_order_id = merchantOrderId;
             
             // Usar endpoint público que no requiere autenticación
             const verificarRes = await ordenesApi.verificarPagoPublico(id, body);

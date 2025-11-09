@@ -1260,17 +1260,17 @@ export const verificarPago = async (req, res) => {
 export const verificarPagoPublico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_id, collection_id, status } = req.body;
+    const { payment_id, collection_id, merchant_order_id, status } = req.body;
 
     // Validar que se proporcionó al menos uno de los IDs
-    if (!payment_id && !collection_id) {
+    if (!payment_id && !collection_id && !merchant_order_id) {
       return res.status(400).json({
-        message: "payment_id o collection_id es requerido",
+        message: "payment_id, collection_id o merchant_order_id es requerido",
       });
     }
 
     console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id}`);
-    console.log(`[VerificarPagoPublico] payment_id=${payment_id}, collection_id=${collection_id}`);
+    console.log(`[VerificarPagoPublico] payment_id=${payment_id}, collection_id=${collection_id}, merchant_order_id=${merchant_order_id}`);
 
     // Verificar que la orden existe
     const orden = await pool.query(
@@ -1319,7 +1319,28 @@ export const verificarPagoPublico = async (req, res) => {
       }
     }
     
-    // Estrategia 2: Si no funcionó o es una preferencia, buscar pagos por external_reference (ID de orden)
+    // Estrategia 2: Si tenemos merchant_order_id, buscar pagos por merchant_order_id (más confiable)
+    if (!pagoInfo && merchant_order_id) {
+      try {
+        console.log(`[VerificarPagoPublico] 🔍 Buscando pagos por merchant_order_id ${merchant_order_id}`);
+        const { buscarPagosPorMerchantOrder } = await import("../libs/mercadopago.js");
+        pagoInfo = await buscarPagosPorMerchantOrder(merchant_order_id);
+        if (pagoInfo) {
+          console.log(`[VerificarPagoPublico] ✅ Pago encontrado por merchant_order_id: ${pagoInfo.id}`);
+          console.log(`[VerificarPagoPublico] Estado del pago encontrado: ${pagoInfo.status}`);
+        } else {
+          console.log(`[VerificarPagoPublico] ⚠️ No se encontraron pagos para merchant_order_id ${merchant_order_id}`);
+        }
+      } catch (error) {
+        console.warn(`[VerificarPagoPublico] ⚠️ Error buscando pagos por merchant_order_id:`, {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+        });
+      }
+    }
+    
+    // Estrategia 3: Si no funcionó, buscar pagos por external_reference (ID de orden)
     if (!pagoInfo) {
       try {
         console.log(`[VerificarPagoPublico] 🔍 Buscando pagos por external_reference (orden ${id})`);
@@ -1352,6 +1373,7 @@ export const verificarPagoPublico = async (req, res) => {
         orden_estado: ordenActual.estado,
         payment_id_recibido: payment_id || null,
         collection_id_recibido: collection_id || null,
+        merchant_order_id_recibido: merchant_order_id || null,
         sugerencia: "El pago puede estar aún procesándose. Espera unos minutos y verifica nuevamente, o espera a que el webhook procese el pago.",
       });
     }

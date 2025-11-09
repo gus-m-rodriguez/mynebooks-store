@@ -30,29 +30,18 @@ app.use(
 );
 app.use(cookieParser());
 
-// Middleware para capturar body raw del webhook antes de parsearlo
-// Esto es necesario para validar la firma de Mercado Pago correctamente
+// IMPORTANTE: El webhook necesita el body raw para validar la firma
+// Por eso NO aplicamos express.json() globalmente, sino que lo aplicamos selectivamente
+// El webhook usará express.raw() directamente en su ruta
+
+// Middleware para parsear JSON en todas las rutas EXCEPTO el webhook
 app.use((req, res, next) => {
+  // Si es el webhook, no parsear aquí (se parseará en la ruta con raw body)
   if (req.path === "/api/pagos/webhook/mercadopago") {
-    // Para el webhook, capturar el body raw
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk.toString();
-    });
-    req.on("end", () => {
-      req.rawBody = data;
-      // Parsear el JSON para que req.body esté disponible
-      try {
-        req.body = JSON.parse(data);
-      } catch (e) {
-        req.body = {};
-      }
-      next();
-    });
-  } else {
-    // Para todas las demás rutas, usar JSON parser normal
-    express.json()(req, res, next);
+    return next();
   }
+  // Para todas las demás rutas, parsear JSON normalmente
+  return express.json()(req, res, next);
 });
 
 app.use(express.urlencoded({ extended: false }));

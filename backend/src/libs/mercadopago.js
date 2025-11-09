@@ -250,6 +250,50 @@ export const obtenerPreferencia = async (preferenceId) => {
 };
 
 /**
+ * Buscar pagos por merchant_order_id
+ * El merchant_order_id identifica la orden comercial que puede tener múltiples pagos asociados
+ */
+export const buscarPagosPorMerchantOrder = async (merchantOrderId) => {
+  try {
+    console.log(`[buscarPagosPorMerchantOrder] Buscando pagos para merchant_order_id ${merchantOrderId}`);
+    
+    const axios = (await import("axios")).default;
+    const response = await axios.get(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
+      headers: {
+        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      },
+    });
+    
+    console.log(`[buscarPagosPorMerchantOrder] Respuesta de Mercado Pago:`, {
+      merchant_order_id: response.data?.id,
+      payments_count: response.data?.payments?.length || 0,
+      status: response.data?.status,
+    });
+    
+    if (response.data && response.data.payments && response.data.payments.length > 0) {
+      // Obtener el pago más reciente (último en el array)
+      const ultimoPagoId = response.data.payments[response.data.payments.length - 1];
+      console.log(`[buscarPagosPorMerchantOrder] Obteniendo detalles del pago ${ultimoPagoId}`);
+      
+      // Obtener detalles del pago
+      const pagoInfo = await obtenerPago(ultimoPagoId);
+      console.log(`[buscarPagosPorMerchantOrder] ✅ Pago encontrado: ID=${pagoInfo.id}, Estado=${pagoInfo.status}`);
+      return pagoInfo;
+    }
+    
+    console.log(`[buscarPagosPorMerchantOrder] ⚠️ No se encontraron pagos para merchant_order_id ${merchantOrderId}`);
+    return null;
+  } catch (error) {
+    console.error("[buscarPagosPorMerchantOrder] ❌ Error buscando pagos por merchant_order_id:", {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+/**
  * Procesar notificación de webhook de Mercado Pago
  * @param {Object} data - Datos del webhook
  * @returns {Object} - Información del pago procesado
