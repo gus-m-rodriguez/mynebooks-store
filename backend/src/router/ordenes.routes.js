@@ -6,6 +6,7 @@ import {
   iniciarPago,
   actualizarEstadoOrden,
   verificarPago,
+  verificarPagoPublico,
   eliminarItemOrden,
 } from "../controllers/ordenes.controller.js";
 import { isAuth } from "../middlewares/auth.middleware.js";
@@ -13,6 +14,10 @@ import { validateSchema } from "../middlewares/validate.middleware.js";
 import { actualizarEstadoSchema } from "../schemas/ordenes.schema.js";
 
 const router = Router();
+
+// RUTA PÚBLICA: Verificar pago desde redirect de Mercado Pago (NO requiere autenticación)
+// La seguridad se basa en validar el payment_id con Mercado Pago
+router.post("/:id/verificar-pago-publico", verificarPagoPublico);
 
 // Rutas de usuario autenticado
 router.use(isAuth);

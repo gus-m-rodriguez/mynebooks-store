@@ -1254,6 +1254,250 @@ export const verificarPago = async (req, res) => {
   }
 };
 
+// Verificar pago desde redirect de Mercado Pago (ENDPOINT PÚBLICO)
+// Este endpoint NO requiere autenticación porque se llama desde el redirect de MP
+// La seguridad se basa en validar el payment_id con Mercado Pago
+export const verificarPagoPublico = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payment_id, status } = req.body;
+
+    // Validar que se proporcionó payment_id
+    if (!payment_id) {
+      return res.status(400).json({
+        message: "payment_id es requerido",
+      });
+    }
+
+    console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id} con payment_id=${payment_id}`);
+
+    // Verificar que la orden existe
+    const orden = await pool.query(
+      "SELECT id_orden, id_usuario, estado FROM ordenes WHERE id_orden = $1",
+      [id]
+    );
+
+    if (orden.rowCount === 0) {
+      return res.status(404).json({ message: "Orden no encontrada" });
+    }
+
+    const ordenActual = orden.rows[0];
+
+    // Verificar payment_id con Mercado Pago y validar que corresponde a esta orden
+    let pagoInfo;
+    try {
+      pagoInfo = await obtenerPago(payment_id);
+    } catch (error) {
+      console.error(`[VerificarPagoPublico] Error consultando Mercado Pago:`, error);
+      return res.status(400).json({
+        message: "El payment_id proporcionado no es válido o no existe en Mercado Pago",
+        orden_estado: ordenActual.estado,
+      });
+    }
+
+    // Validar que el external_reference corresponde a esta orden
+    if (pagoInfo.external_reference !== id.toString()) {
+      return res.status(400).json({
+        message: "El payment_id no corresponde a esta orden",
+        orden_estado: ordenActual.estado,
+      });
+    }
+
+    const mpStatus = pagoInfo.status;
+    const transactionAmount = pagoInfo.transaction_amount;
+
+    console.log(`[VerificarPagoPublico] Estado en MP: ${mpStatus}, Estado actual en BD: ${ordenActual.estado}`);
+
+    // Verificar si ya existe un pago con este mp_id (idempotencia)
+    let pago = await pool.query(
+      "SELECT id_pago, mp_id, estado FROM pagos WHERE mp_id = $1",
+      [payment_id]
+    );
+
+    let pagoActual = null;
+
+    // Si no existe, crear registro de pago
+    if (pago.rowCount === 0) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const totalOrden = await client.query(
+          `SELECT SUM(cantidad * precio_unitario) as total 
+           FROM orden_items 
+           WHERE id_orden = $1`,
+          [id]
+        );
+        const monto = parseFloat(totalOrden.rows[0]?.total || transactionAmount || 0);
+
+        const nuevoPago = await client.query(
+          `INSERT INTO pagos (id_orden, mp_id, estado, monto, fecha_pago) 
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id_pago, mp_id, estado`,
+          [
+            id,
+            payment_id,
+            mpStatus,
+            monto,
+            mpStatus === "approved" ? new Date() : null,
+          ]
+        );
+
+        pagoActual = nuevoPago.rows[0];
+        await client.query("COMMIT");
+        console.log(`[VerificarPagoPublico] Registro de pago creado: id_pago=${pagoActual.id_pago}, mp_id=${payment_id}`);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      pagoActual = pago.rows[0];
+    }
+
+    // Si el estado ya está actualizado, retornar sin hacer nada
+    if (
+      (mpStatus === "approved" && ordenActual.estado === "pagado") ||
+      (mpStatus === "rejected" && ordenActual.estado === "rechazado") ||
+      (mpStatus === "cancelled" && (ordenActual.estado === "cancelada_mp" || ordenActual.estado === "cancelado")) ||
+      ((mpStatus === "pending" || mpStatus === "in_process") && ordenActual.estado === "en_pago")
+    ) {
+      return res.json({
+        message: "El estado de la orden ya está actualizado",
+        orden_estado: ordenActual.estado,
+        pago_estado: mpStatus,
+        actualizado: false,
+      });
+    }
+
+    // Determinar nuevo estado según el resultado de Mercado Pago
+    let nuevoEstado = ordenActual.estado;
+    let actualizarStock = false;
+    let liberarReserva = false;
+    let descontarStock = false;
+
+    switch (mpStatus) {
+      case "approved":
+        nuevoEstado = "pagado";
+        actualizarStock = true;
+        descontarStock = true;
+        liberarReserva = true;
+        break;
+      case "rejected":
+        nuevoEstado = "rechazado";
+        actualizarStock = true;
+        liberarReserva = true;
+        break;
+      case "cancelled":
+        nuevoEstado = "cancelada_mp";
+        actualizarStock = true;
+        liberarReserva = true;
+        break;
+      case "pending":
+      case "in_process":
+        nuevoEstado = "en_pago";
+        break;
+      default:
+        nuevoEstado = "error";
+    }
+
+    // Obtener items para manejar stock
+    const items = await pool.query(
+      "SELECT id_producto, cantidad FROM orden_items WHERE id_orden = $1",
+      [id]
+    );
+
+    // Usar transacción para actualizar
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Actualizar estado de la orden
+      await client.query(
+        "UPDATE ordenes SET estado = $1 WHERE id_orden = $2",
+        [nuevoEstado, id]
+      );
+
+      // Actualizar estado del pago
+      await client.query(
+        "UPDATE pagos SET estado = $1, monto = $2, fecha_pago = $3 WHERE id_pago = $4",
+        [
+          mpStatus,
+          transactionAmount,
+          mpStatus === "approved" ? new Date() : null,
+          pagoActual.id_pago,
+        ]
+      );
+
+      // Manejar stock
+      if (actualizarStock && items.rowCount > 0) {
+        for (const item of items.rows) {
+          if (descontarStock && liberarReserva) {
+            // Pago exitoso: descontar stock y liberar reserva
+            await client.query(
+              `UPDATE productos 
+               SET stock = stock - $1, stock_reserved = stock_reserved - $1
+               WHERE id_producto = $2 AND stock_reserved >= $1`,
+              [item.cantidad, item.id_producto]
+            );
+          } else if (liberarReserva) {
+            // Pago rechazado/cancelado: solo liberar reserva
+            await client.query(
+              `UPDATE productos 
+               SET stock_reserved = stock_reserved - $1
+               WHERE id_producto = $2 AND stock_reserved >= $1`,
+              [item.cantidad, item.id_producto]
+            );
+          }
+        }
+      }
+
+      // Registrar en auditoría
+      await client.query(
+        `INSERT INTO auditoria (tipo, usuario, fecha) 
+         VALUES ($1, $2, CURRENT_TIMESTAMP)`,
+        [
+          `pago_verificado_publico_${mpStatus}`,
+          `usuario_${ordenActual.id_usuario}`,
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      // Enviar email de confirmación si la orden cambió a "pagado"
+      if (nuevoEstado === "pagado" && ordenActual.estado !== "pagado") {
+        try {
+          const { enviarEmailConfirmacionOrdenPagada } = await import("../utils/email.js");
+          await enviarEmailConfirmacionOrdenPagada(pool, id, ordenActual.id_usuario);
+        } catch (emailError) {
+          console.error("[VerificarPagoPublico] Error enviando email de confirmación:", emailError);
+        }
+      }
+
+      console.log(`[VerificarPagoPublico] Orden ${id} actualizada: ${ordenActual.estado} -> ${nuevoEstado}`);
+
+      res.json({
+        message: "Estado del pago verificado y actualizado",
+        orden_estado: nuevoEstado,
+        pago_estado: mpStatus,
+        actualizado: true,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("[VerificarPagoPublico] Error:", error);
+    res.status(500).json({
+      message: "Error al verificar el estado del pago",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 // Eliminar un item individual de una orden
 // Si se eliminan todos los items, la orden se cancela automáticamente
 export const eliminarItemOrden = async (req, res) => {

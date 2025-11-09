@@ -58,6 +58,11 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
           </Route>
 
+          {/* Rutas de resultado de pago (públicas para permitir redirect desde Mercado Pago) */}
+          <Route path="/ordenes/:id/success" element={<OrdenSuccessPage />} />
+          <Route path="/ordenes/:id/failure" element={<OrdenFailurePage />} />
+          <Route path="/ordenes/:id/pending" element={<OrdenPendingPage />} />
+
           {/* Rutas protegidas (usuario autenticado) */}
           <Route element={<ProtectedRoute isAllowed={isAuth} redirectTo="/login" />}>
             <Route path="/perfil" element={<ProfilePage />} />
@@ -65,9 +70,6 @@ function App() {
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/ordenes" element={<OrdenesPage />} />
             <Route path="/ordenes/:id" element={<OrdenDetailPage />} />
-            <Route path="/ordenes/:id/success" element={<OrdenSuccessPage />} />
-            <Route path="/ordenes/:id/failure" element={<OrdenFailurePage />} />
-            <Route path="/ordenes/:id/pending" element={<OrdenPendingPage />} />
           </Route>
 
           {/* Rutas protegidas (admin) */}

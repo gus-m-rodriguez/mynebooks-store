@@ -20,26 +20,37 @@ const OrdenSuccessPage = () => {
         const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
         
         // Primero intentar verificar el pago con Mercado Pago (esto actualiza el estado si el pago fue aprobado)
-        try {
-          console.log("[OrdenSuccessPage] Verificando pago con Mercado Pago para orden:", id);
-          console.log("[OrdenSuccessPage] Payment ID de URL:", paymentId);
-          
-          // Si hay payment_id en la URL, enviarlo al backend
-          const verificarRes = await ordenesApi.verificarPago(id, paymentId ? { payment_id: paymentId } : {});
-          console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
-        } catch (err) {
-          console.error("[OrdenSuccessPage] Error verificando pago:", err);
-          // Continuar aunque falle la verificación
+        // Usar endpoint público que no requiere autenticación
+        if (paymentId) {
+          try {
+            console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
+            console.log("[OrdenSuccessPage] Payment ID de URL:", paymentId);
+            
+            // Usar endpoint público que no requiere autenticación
+            const verificarRes = await ordenesApi.verificarPagoPublico(id, { payment_id: paymentId });
+            console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
+          } catch (err) {
+            console.error("[OrdenSuccessPage] Error verificando pago público:", err);
+            // Continuar aunque falle la verificación
+          }
         }
         
-        // Verificar el estado actualizado de la orden
-        const res = await ordenesApi.obtener(id);
-        setOrden(res.data);
-        
-        console.log("[OrdenSuccessPage] Estado de la orden:", res.data.estado);
+        // Intentar obtener el estado de la orden (puede fallar si no hay sesión, pero no es crítico)
+        let ordenData = null;
+        try {
+          const res = await ordenesApi.obtener(id);
+          ordenData = res.data;
+          setOrden(ordenData);
+          console.log("[OrdenSuccessPage] Estado de la orden:", ordenData.estado);
+        } catch (err) {
+          console.warn("[OrdenSuccessPage] No se pudo obtener la orden (puede ser por falta de sesión):", err);
+          // Si no hay sesión, mostrar mensaje genérico pero positivo
+          ordenData = { estado: paymentId ? "pagado" : "en_pago" };
+          setOrden(ordenData);
+        }
         
         // Si la orden está pagada, redirigir al catálogo después de 5 segundos
-        if (res.data.estado === "pagado") {
+        if (ordenData?.estado === "pagado") {
           setTimeout(() => {
             navigate("/catalogo");
           }, 5000);

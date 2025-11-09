@@ -8,6 +8,14 @@
 2. **Pérdida de sesión**: El usuario era redirigido a la página de login después del redirect de Mercado Pago.
 3. **Pago no registrado**: El sistema no actualizaba el estado de la orden a "pagado" aunque el pago fuera exitoso en Mercado Pago.
 
+## Problema Raíz Identificado
+
+El problema principal era que:
+- Las rutas `/ordenes/:id/success` estaban protegidas y requerían autenticación.
+- Cuando el usuario volvía de Mercado Pago, las cookies podían no estar disponibles inmediatamente.
+- `ProtectedRoute` redirigía a `/login` ANTES de que se pudiera ejecutar la verificación del pago.
+- La función `verificarPago` requería autenticación, por lo que nunca se ejecutaba.
+
 ---
 
 ## Cambios Implementados
@@ -312,6 +320,116 @@ res.cookie("token", token, {
 
 ---
 
+### 6. Endpoint Público para Verificar Pago (SOLUCIÓN DEFINITIVA)
+
+**Archivo**: `backend/src/controllers/ordenes.controller.js`
+
+**Nueva función**: `verificarPagoPublico` (línea ~1257)
+
+**Propósito**: 
+- Endpoint público que NO requiere autenticación.
+- Se llama desde el redirect de Mercado Pago cuando el usuario puede no tener sesión activa.
+- La seguridad se basa en validar el `payment_id` con Mercado Pago antes de procesar.
+
+**Funcionalidad**:
+1. Valida que se proporcionó `payment_id`.
+2. Verifica el `payment_id` con la API de Mercado Pago.
+3. Valida que el `payment_id` corresponde a la orden (mediante `external_reference`).
+4. Crea o actualiza el registro de pago en la base de datos.
+5. Actualiza el estado de la orden según el resultado de Mercado Pago.
+6. Maneja el stock (descuenta si aprobado, libera reserva si rechazado).
+
+**Archivo**: `backend/src/router/ordenes.routes.js`
+
+**Cambio**:
+```javascript
+// ANTES:
+const router = Router();
+router.use(isAuth); // Todas las rutas requieren autenticación
+
+// DESPUÉS:
+const router = Router();
+
+// RUTA PÚBLICA: Verificar pago desde redirect de Mercado Pago
+router.post("/:id/verificar-pago-publico", verificarPagoPublico);
+
+// Rutas de usuario autenticado
+router.use(isAuth);
+```
+
+**Explicación**: 
+- El endpoint público se define ANTES de aplicar el middleware `isAuth`.
+- Esto permite que se llame sin autenticación.
+- La seguridad se garantiza validando el `payment_id` con Mercado Pago.
+
+---
+
+### 7. Rutas de Success/Failure/Pending Públicas
+
+**Archivo**: `frontend/src/App.jsx`
+
+**Cambio**:
+```jsx
+// ANTES:
+<Route element={<ProtectedRoute isAllowed={isAuth} redirectTo="/login" />}>
+  <Route path="/ordenes/:id/success" element={<OrdenSuccessPage />} />
+  <Route path="/ordenes/:id/failure" element={<OrdenFailurePage />} />
+  <Route path="/ordenes/:id/pending" element={<OrdenPendingPage />} />
+</Route>
+
+// DESPUÉS:
+{/* Rutas de resultado de pago (públicas para permitir redirect desde Mercado Pago) */}
+<Route path="/ordenes/:id/success" element={<OrdenSuccessPage />} />
+<Route path="/ordenes/:id/failure" element={<OrdenFailurePage />} />
+<Route path="/ordenes/:id/pending" element={<OrdenPendingPage />} />
+
+{/* Rutas protegidas (usuario autenticado) */}
+<Route element={<ProtectedRoute isAllowed={isAuth} redirectTo="/login" />}>
+  {/* ... otras rutas ... */}
+</Route>
+```
+
+**Explicación**: 
+- Las rutas de resultado de pago ahora son públicas.
+- Esto permite que el usuario acceda a ellas incluso si no tiene sesión activa.
+- El componente `OrdenSuccessPage` usa el endpoint público para verificar el pago.
+
+---
+
+### 8. Actualización de OrdenSuccessPage para Usar Endpoint Público
+
+**Archivo**: `frontend/src/pages/OrdenSuccessPage.jsx`
+
+**Cambio en el useEffect**:
+
+**ANTES**:
+```javascript
+const verificarRes = await ordenesApi.verificarPago(id, paymentId ? { payment_id: paymentId } : {});
+```
+
+**DESPUÉS**:
+```javascript
+if (paymentId) {
+  // Usar endpoint público que no requiere autenticación
+  const verificarRes = await ordenesApi.verificarPagoPublico(id, { payment_id: paymentId });
+}
+```
+
+**Archivo**: `frontend/src/api/ordenes.api.js`
+
+**Nueva función agregada**:
+```javascript
+// Verificar pago desde redirect de Mercado Pago (endpoint público, no requiere autenticación)
+verificarPagoPublico: (id, body) => cliente.post(`/ordenes/${id}/verificar-pago-publico`, body),
+```
+
+**Explicación**: 
+- Ahora se usa el endpoint público cuando hay `payment_id` en la URL.
+- Esto permite verificar el pago incluso si el usuario no tiene sesión activa.
+- Si no hay sesión, se muestra un mensaje genérico pero positivo.
+
+---
+
 ## Flujo Completo Actualizado
 
 1. **Usuario inicia pago**: 
@@ -341,10 +459,12 @@ res.cookie("token", token, {
 ## Archivos Modificados
 
 1. `frontend/package.json` - Agregado flag `-s` al comando start
-2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago`
-3. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` de URL
-4. `frontend/src/api/ordenes.api.js` - Actualizada función `verificarPago` para aceptar body
-5. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
+2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico`
+3. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
+4. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` de URL + uso de endpoint público
+5. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
+6. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
+7. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
 
 ---
 
