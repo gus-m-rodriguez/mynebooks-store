@@ -37,22 +37,22 @@ function App() {
   const { isAuth } = useAuth()
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-grow flex flex-col relative">
-        {/* Fondo de marca de agua solo en el área del main */}
-        <div 
-          className="absolute inset-0 z-0 pointer-events-none opacity-10"
-          style={{
-            backgroundImage: `url(${myneblueImage})`,
-            backgroundRepeat: 'no-repeat',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        />
-        
-        {/* Contenido principal con z-index para estar sobre el fondo */}
-        <div className="relative z-10">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Fondo de marca de agua */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none opacity-10"
+        style={{
+          backgroundImage: `url(${myneblueImage})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+      
+      {/* Contenido principal con z-index para estar sobre el fondo */}
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow flex flex-col">
           <Routes>
           {/* Rutas públicas - Accesibles para todos */}
             <Route path="/" element={<HomePage />} />
@@ -98,10 +98,10 @@ function App() {
 
           {/* 404 */}
           <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </div>
+        </Routes>
       </main>
       <Footer />
+      </div>
     </div>
   )
 }
