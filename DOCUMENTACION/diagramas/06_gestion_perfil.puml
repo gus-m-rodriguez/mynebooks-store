@@ -1,0 +1,59 @@
+@startuml CasosDeUso_GestionPerfil
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Gestión de Perfil\nMyneBooks Store
+
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+
+usecase UC25 as "UC-25: Ver perfil"
+usecase UC26 as "UC-26: Actualizar perfil\n(nombre, apellido, email)"
+usecase UC27 as "UC-27: Actualizar dirección de envío"
+
+' Relaciones
+Cliente --> UC25
+Cliente --> UC26
+Cliente --> UC27
+
+' Extensiones
+UC26 ..> UC25 : <<extend>>
+UC27 ..> UC25 : <<extend>>
+
+' Notas
+note right of UC25
+  Ver perfil muestra:
+  - Nombre y apellido
+  - Email
+  - Dirección de envío actual
+  - Rol del usuario
+  - Fecha de registro
+  - Opciones de edición
+end note
+
+note right of UC26
+  Actualizar perfil:
+  - Nombre y apellido
+  - Email (debe ser único)
+  - Validación con Joi
+  - Actualiza en base de datos
+  - Mensaje de confirmación
+end note
+
+note right of UC27
+  Actualizar dirección de envío:
+  - Dirección completa (mínimo 10 caracteres)
+  - Se usa en futuras órdenes
+  - Puede actualizarse en checkout también
+  - Validación de formato
+end note
+
+@enduml
+

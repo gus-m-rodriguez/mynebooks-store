@@ -1,0 +1,81 @@
+@startuml Secuencia_InicioSesion
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Inicio de Sesión con Bloqueo\nMyneBooks Store
+
+actor Usuario as "Usuario\n(Cliente)" #LightGreen
+participant Frontend as "Frontend\n(React)" #LightBlue
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+
+Usuario -> Frontend: 1. Ingresa email y contraseña
+Frontend -> Frontend: 2. Validación con React Hook Form
+
+Usuario -> Frontend: 3. Envía formulario
+Frontend -> Backend: 4. POST /api/auth/login\n{email, password}
+
+Backend -> BD: 5. SELECT usuario por email\n(incluye intentos_fallidos, cuenta_bloqueada_hasta)
+BD -> Backend: 6. Resultado
+
+alt Email no existe
+    Backend -> BD: 7a. INSERT INTO auditoria\n(tipo='intento_acceso_email_inexistente')
+    BD -> Backend: 8a. Registrado
+    Backend -> Frontend: 9a. Error 400: Email no registrado
+    Frontend -> Usuario: 10a. Mostrar mensaje de error
+else Email existe
+    Backend -> Backend: 7b. Verificar si cuenta está bloqueada
+    
+    alt Cuenta bloqueada
+        Backend -> Backend: 8b1. Calcular minutos restantes
+        Backend -> BD: 9b1. INSERT INTO auditoria\n(tipo='intento_acceso_cuenta_bloqueada')
+        BD -> Backend: 10b1. Registrado
+        Backend -> Frontend: 11b1. Error 423: Cuenta bloqueada\n(minutos_restantes)
+        Frontend -> Usuario: 12b1. Mostrar mensaje de bloqueo
+    else Cuenta no bloqueada
+        Backend -> Backend: 8b2. Comparar contraseña\n(bcrypt.compare)
+        
+        alt Contraseña incorrecta
+            Backend -> Backend: 9b2a. Incrementar intentos_fallidos
+            
+            alt Alcanzó 5 intentos fallidos
+                Backend -> Backend: 10b2a1. Calcular fecha_bloqueo\n(ahora + 30 minutos)
+                Backend -> BD: 11b2a1. UPDATE usuarios\n(intentos_fallidos=5, cuenta_bloqueada_hasta)
+                BD -> Backend: 12b2a1. Actualizado
+                Backend -> BD: 13b2a1. INSERT INTO auditoria\n(tipo='cuenta_bloqueada')
+                BD -> Backend: 14b2a1. Registrado
+                Backend -> BD: 15b2a1. INSERT INTO auditoria\n(tipo='intento_acceso_fallido')
+                BD -> Backend: 16b2a1. Registrado
+                Backend -> Frontend: 17b2a1. Error 423: Cuenta bloqueada\n(30 minutos)
+                Frontend -> Usuario: 18b2a1. Mostrar mensaje de bloqueo
+            else Menos de 5 intentos
+                Backend -> BD: 10b2a2. UPDATE usuarios\n(intentos_fallidos++)
+                BD -> Backend: 11b2a2. Actualizado
+                Backend -> BD: 12b2a2. INSERT INTO auditoria\n(tipo='intento_acceso_fallido')
+                BD -> Backend: 13b2a2. Registrado
+                Backend -> Frontend: 14b2a2. Error 400: Contraseña incorrecta\n(intentos_restantes)
+                Frontend -> Usuario: 15b2a2. Mostrar mensaje con intentos restantes
+            end
+        else Contraseña correcta
+            Backend -> BD: 9b2b. UPDATE usuarios\n(intentos_fallidos=0, cuenta_bloqueada_hasta=NULL)
+            BD -> Backend: 10b2b. Actualizado
+            
+            Backend -> Backend: 11b2b. Generar JWT token\n(createAccessToken)
+            Backend -> Backend: 12b2b. Configurar cookie httpOnly y secure
+            
+            Backend -> BD: 13b2b. INSERT INTO auditoria\n(tipo='acceso_exitoso')
+            BD -> Backend: 14b2b. Registrado
+            
+            Backend -> Frontend: 15b2b. 200 OK\n{id, nombre, apellido, email, rol}
+            note right of Backend: Cookie con JWT enviada\nen headers Set-Cookie
+            
+            Frontend -> Frontend: 16b2b. Actualizar AuthContext\n(usuario autenticado)
+            Frontend -> Usuario: 17b2b. Redirigir a /catalogo\nSesión iniciada
+        end
+    end
+end
+
+@enduml
+

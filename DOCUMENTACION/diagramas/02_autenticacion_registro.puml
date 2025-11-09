@@ -1,0 +1,79 @@
+@startuml CasosDeUso_AutenticacionRegistro
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Autenticación y Registro\nMyneBooks Store
+
+actor Visitante as "Visitante\n(No autenticado)" #LightBlue
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+
+usecase UC05 as "UC-05: Registrarse"
+usecase UC06 as "UC-06: Iniciar sesión"
+usecase UC07 as "UC-07: Cerrar sesión"
+usecase UC08 as "UC-08: Recuperar contraseña\n(solicitar por email)"
+usecase UC09 as "UC-09: Restablecer contraseña\n(con token de seguridad)"
+usecase UC10 as "UC-10: Cambiar contraseña\n(desde perfil)"
+
+' Relaciones
+Visitante --> UC05
+Visitante --> UC06
+Visitante --> UC08
+
+Cliente --> UC06
+Cliente --> UC07
+Cliente --> UC08
+Cliente --> UC09
+Cliente --> UC10
+
+' Extensiones
+UC09 ..> UC08 : <<extend>>
+
+' Notas
+note right of UC05
+  Registro de nuevo usuario:
+  - Nombre y apellido
+  - Email (único)
+  - Contraseña (hash con bcrypt)
+  - Validación con Joi
+end note
+
+note right of UC06
+  Inicio de sesión:
+  - Email y contraseña
+  - Genera JWT token
+  - Cookie httpOnly y secure
+  - Bloqueo tras 5 intentos fallidos
+end note
+
+note right of UC08
+  Recuperación de contraseña:
+  - Solicita email
+  - Envía token por email (Nodemailer)
+  - Token expira en 1 hora
+  - Link único para restablecer
+end note
+
+note right of UC09
+  Restablecimiento de contraseña:
+  - Requiere token válido
+  - Nueva contraseña con validación
+  - Invalida token después de uso
+end note
+
+note right of UC10
+  Cambio de contraseña desde perfil:
+  - Requiere contraseña actual
+  - Nueva contraseña con validación
+  - Actualiza password_hash
+end note
+
+@enduml
+

@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRS MyneBooks Store v1.3 - Especificación de Requisitos de Software</title>
+    <style>
+        @page {
+            margin: 2.5cm;
+        }
+        body {
+            font-family: 'Cambria', 'Times New Roman', serif;
+            font-size: 11pt;
+            line-height: 1.15;
+            color: #000;
+            max-width: 21cm;
+            margin: 0 auto;
+            padding: 1cm;
+        }
+        h1 {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #1F497D;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+            page-break-after: avoid;
+        }
+        h2 {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #365F91;
+            margin-top: 18pt;
+            margin-bottom: 10pt;
+            page-break-after: avoid;
+        }
+        h3 {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #4F81BD;
+            margin-top: 12pt;
+            margin-bottom: 8pt;
+            page-break-after: avoid;
+        }
+        p {
+            margin: 6pt 0;
+            text-align: justify;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12pt 0;
+            font-size: 10pt;
+        }
+        table th, table td {
+            border: 1px solid #000;
+            padding: 6pt;
+            text-align: left;
+            vertical-align: top;
+        }
+        table th {
+            background-color: #D9E1F2;
+            font-weight: bold;
+        }
+        .tabla {
+            font-weight: bold;
+            text-align: center;
+        }
+        ul, ol {
+            margin: 6pt 0;
+            padding-left: 24pt;
+        }
+        li {
+            margin: 3pt 0;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        .titulo-documento {
+            text-align: center;
+            font-size: 20pt;
+            font-weight: bold;
+            margin: 30pt 0;
+            color: #1F497D;
+        }
+        .subtitulo {
+            text-align: center;
+            font-size: 14pt;
+            margin-bottom: 20pt;
+        }
+        code {
+            font-family: 'Courier New', monospace;
+            background-color: #F2F2F2;
+            padding: 2pt 4pt;
+        }
+    </style>
+</head>
+<body>
+
+<div class="titulo-documento">
+    ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE (SRS)
+</div>
+
+<div class="subtitulo">
+    <strong>MyneBooks Store</strong><br>
+    Versión 1.3 - Actualizado según Implementación Real<br>
+    UTN Wizards - Proyecto Integrador
+</div>
+
+<h1>Resumen Ejecutivo</h1>
+
+<p>El presente documento define los requisitos funcionales, no funcionales y de interfaz del sistema <strong>MyneBooks Store</strong>, un e-commerce educativo y cultural desarrollado por el equipo UTN Wizards. El objetivo principal del proyecto es ofrecer una plataforma moderna para la venta y difusión de libros y mangas, combinando una experiencia de usuario agradable con un backend robusto, seguro y escalable.</p>
+
+<p><strong>MyneBooks Store</strong> integra un catálogo navegable por visitantes y usuarios registrados, carrito de compras, pasarela de pago Mercado Pago, y un panel administrativo para gestión de productos, usuarios y generación de informes. El sistema está pensado como una aplicación web responsive basada en el stack PERN (PostgreSQL, Express, React, Node.js), alojada en servicios en la nube con ambientes diferenciados (dev / sandbox / prod).</p>
+
+<p>El documento sigue las directrices del estándar IEEE-830 y describe de manera detallada las funcionalidades, restricciones, interfaces, modelos de datos, casos de uso, flujos y criterios de prueba, con el propósito de servir como referencia formal para el desarrollo, validación y mantenimiento del sistema.</p>
+
+<h1>0. Control del Documento</h1>
+
+<h2>0.1 Historial de Versiones</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Versión</th>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Autor</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>0.2</td>
+            <td>03/11/2025</td>
+            <td>Primera versión completa del SRS</td>
+            <td>UTN Wizards</td>
+        </tr>
+        <tr>
+            <td>0.3</td>
+            <td>04/11/2025</td>
+            <td>Incorporación de nuevos RF y brief MyneBooks</td>
+            <td>UTN Wizards</td>
+        </tr>
+        <tr>
+            <td>1.0</td>
+            <td>05/11/2025</td>
+            <td>Fusión de contenidos previos y revisión estructural</td>
+            <td>UTN Wizards</td>
+        </tr>
+        <tr>
+            <td>1.2</td>
+            <td>05/11/2025</td>
+            <td>Versión final con RI integrados y redacción extendida</td>
+            <td>UTN Wizards</td>
+        </tr>
+        <tr>
+            <td>1.3</td>
+            <td>Enero 2025</td>
+            <td>Actualización según implementación real del proyecto</td>
+            <td>UTN Wizards</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>0.2 Aprobaciones y Responsables</h2>
+
+<p><strong>Equipo autor:</strong></p>
+<ul>
+    <li>UTN Wizards (Víctor Alejandro, Florencia B., Axel, Franco Cardozo, Rocío, Alejandro, Gustavo, Brisa)</li>
+    <li>Revisión técnica: Gustavo Marcelo Rodríguez</li>
+    <li>Supervisión académica: UTN FR San Rafael</li>
+</ul>
+
+<h2>0.3 Convenciones y Estilos Empleados</h2>
+
+<p>El documento utiliza numeración jerárquica, tipografía sans-serif (Orbitron y Rajdhani para portada, Cambria para cuerpo), y formato 1.15 de interlineado. Los requisitos funcionales (RF), no funcionales (RNF) y de interfaz (RI) se identifican con códigos únicos.</p>
+
+<h1>1. Introducción</h1>
+
+<h2>1.1 Propósito del Documento</h2>
+
+<p>El objetivo de este SRS es definir de forma precisa el comportamiento esperado del sistema <strong>MyneBooks Store</strong>, sirviendo como contrato entre el equipo desarrollador, los docentes evaluadores y los futuros mantenedores del proyecto. El documento especifica los requisitos necesarios para garantizar que el producto final cumpla las necesidades funcionales, técnicas y de usuario final.</p>
+
+<p>Además, establece los criterios de aceptación, las políticas de datos y los lineamientos de interfaz que permitirán su validación y despliegue exitoso.</p>
+
+<h2>1.2 Alcance del Sistema</h2>
+
+<p>El sistema permitirá gestionar un e-commerce orientado a la venta de libros y mangas, ofreciendo un catálogo visual accesible a cualquier visitante, y funcionalidades avanzadas para usuarios registrados: creación de carrito, pagos mediante Mercado Pago, seguimiento de pedidos y descarga de comprobantes. Desde el panel administrativo se gestionarán productos, usuarios, pedidos y la generación de informes PDF. El sistema busca combinar accesibilidad, estética y rendimiento, adaptándose a dispositivos móviles y cumpliendo los estándares de seguridad web actuales.</p>
+
+<h2>1.3 Definiciones, Acrónimos y Abreviaturas</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Término</th>
+            <th>Descripción</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>PERN</td>
+            <td>PostgreSQL, Express, React, Node.js – stack tecnológico principal</td>
+        </tr>
+        <tr>
+            <td>MP</td>
+            <td>Mercado Pago, plataforma de pagos electrónicos</td>
+        </tr>
+        <tr>
+            <td>RF/RNF/RI</td>
+            <td>Requisitos Funcionales, No Funcionales y de Interfaz</td>
+        </tr>
+        <tr>
+            <td>API REST</td>
+            <td>Interfaz de programación basada en HTTP</td>
+        </tr>
+        <tr>
+            <td>JWT</td>
+            <td>JSON Web Token – mecanismo de autenticación</td>
+        </tr>
+        <tr>
+            <td>UI/UX</td>
+            <td>Interfaz de usuario / Experiencia de usuario</td>
+        </tr>
+        <tr>
+            <td>TTL</td>
+            <td>Time To Live – tiempo de vida de reservas temporales</td>
+        </tr>
+        <tr>
+            <td>S3</td>
+            <td>Amazon Simple Storage Service – almacenamiento de objetos</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>1.4 Referencias</h2>
+
+<ul>
+    <li>IEEE 830-1998 – Software Requirements Specification.</li>
+    <li>Documentación oficial de <strong>Mercado Pago Developers</strong> (Checkout Pro / Webhooks).</li>
+    <li>Normas ISO 9241-11 y WCAG 2.1 AA para accesibilidad web.</li>
+    <li>Brief de marca <em>MyneBooks Store</em> – UTN Wizards (Anexo A).</li>
+</ul>
+
+<h2>1.5 Visión General del Documento</h2>
+
+<p>Los capítulos siguientes describen la arquitectura general del sistema, los requisitos funcionales, no funcionales y de interfaz, seguidos por los modelos de datos, diagramas, casos de uso, flujos, criterios de prueba y anexos.</p>
+
+<p>El documento busca mantener un equilibrio entre formalidad técnica y claridad didáctica, sirviendo como guía tanto para el desarrollo como para la evaluación académica.</p>
+
+<h1>2. Descripción General</h1>
+
+<h2>2.1 Perspectiva del Producto</h2>
+
+<p><strong>MyneBooks Store</strong> es una aplicación web de comercio electrónico desarrollada con arquitectura cliente-servidor bajo el stack <strong>PERN</strong> (PostgreSQL, Express, React y Node.js).</p>
+
+<p>El sistema se compone de un frontend accesible mediante navegador y un backend con API REST que administra los datos del catálogo, usuarios, pedidos y pagos.</p>
+
+<p>El backend se comunica con servicios externos como <strong>Mercado Pago</strong> para la gestión de transacciones y con un sistema de almacenamiento <strong>AWS S3</strong> para las imágenes de portadas.</p>
+
+<p>El sistema cuenta además con un <strong>panel administrativo</strong> que permite controlar la información general de la tienda y generar informes de catálogo en formato PDF.</p>
+
+<p>La aplicación está diseñada con un enfoque modular y escalable: cada componente (catálogo, usuarios, pagos, reportes) se gestiona mediante controladores independientes, lo que permite incorporar nuevas funcionalidades sin alterar la estructura principal.</p>
+
+<p>El sistema podrá ser desplegado en entornos Linux (Ubuntu Server) o contenedores Docker, y es compatible con navegadores modernos (Chrome, Edge, Firefox, Safari).</p>
+
+<h2>2.2 Funciones Principales del Producto</h2>
+
+<p>El sistema ofrece dos áreas principales de uso.</p>
+
+<h3>Área pública</h3>
+
+<ul>
+    <li>Permite navegar por el catálogo, visualizar libros y mangas, acceder a detalles, autores y categorías, realizar búsquedas avanzadas, todo sin necesidad de iniciar sesión.</li>
+    <li>Los usuarios pueden registrarse, iniciar sesión, recuperar contraseña mediante email y consultar promociones, novedades y productos destacados.</li>
+</ul>
+
+<h3>Área privada</h3>
+
+<ul>
+    <li>Los usuarios autenticados pueden agregar libros al carrito, realizar compras mediante Mercado Pago, revisar su historial de pedidos agrupados (más tarde, en camino, historial) y descargar comprobantes.</li>
+    <li>Los administradores gestionan productos, usuarios, órdenes y pueden generar un catálogo completo en PDF personalizable. El sistema incluye un sistema de permisos granular que permite asignar acceso específico a diferentes áreas administrativas.</li>
+    <li>Estas funcionalidades se complementan con mecanismos de autenticación JWT, almacenamiento de sesiones en cookies seguras, y comunicación HTTPS cifrada, garantizando la protección de datos personales y transacciones.</li>
+</ul>
+
+<h2>2.3 Perfiles de Usuario y Roles</h2>
+
+<p>El sistema define <strong>cuatro roles principales</strong> con un sistema de permisos granular para administradores:</p>
+
+<ul>
+    <li><strong>Visitante:</strong> usuario no autenticado que puede visualizar el catálogo, acceder a detalles de productos, realizar búsquedas por título/autor/palabra clave, filtrar por categoría, autor y precio, y registrarse.</li>
+    
+    <li><strong>Cliente:</strong> usuario autenticado que puede gestionar su carrito (agregar, modificar cantidades, eliminar productos), realizar pagos mediante Mercado Pago, consultar el historial y estado de sus pedidos agrupados (más tarde, en camino, historial), modificar su perfil (nombre, apellido, email, dirección de envío), cambiar su contraseña y recuperar su contraseña mediante email con token de seguridad.</li>
+    
+    <li><strong>Administrador:</strong> usuario con acceso al panel administrativo basado en permisos asignados. Puede tener permisos específicos para diferentes áreas: <strong>Dashboard</strong> (estadísticas generales), <strong>Productos</strong> (gestión del catálogo), <strong>Órdenes</strong> (gestión de pedidos), <strong>Usuarios</strong> (gestión de usuarios y permisos), <strong>Ingresos</strong> (gestión de pagos) y <strong>Auditoría</strong> (logs del sistema). Los permisos son asignados por el Super Administrador. Solo puede acceder a las áreas para las que tiene permisos asignados.</li>
+    
+    <li><strong>Super Administrador:</strong> usuario con privilegios totales y acceso automático a todas las funcionalidades administrativas. Puede gestionar usuarios, asignar y revocar permisos a otros administradores, y acceder a todas las áreas del sistema. Solo puede haber un Super Administrador en el sistema.</li>
+</ul>
+
+<p>Cada rol posee una interfaz adaptada a su perfil: los visitantes tienen acceso al catálogo público; los clientes, a su panel de usuario con carrito, órdenes y perfil; los administradores, a un panel de control con menús laterales y herramientas de gestión según sus permisos asignados; y el Super Administrador tiene acceso completo a todas las funcionalidades.</p>
+
+<h2>2.4 Entorno Operativo</h2>
+
+<p>El sistema se ejecuta sobre infraestructura cloud o local, bajo entornos basados en <strong>Ubuntu Server 24.04 LTS</strong>, <strong>Node.js 20+</strong>, y <strong>PostgreSQL 15+</strong>.</p>
+
+<p>El <strong>frontend</strong> se desarrolla con <strong>React 18.2+</strong>, <strong>Vite 4.4+</strong> como herramienta de construcción y desarrollo, <strong>React Router DOM 7.9+</strong> para el enrutamiento, <strong>Tailwind CSS 3.3+</strong> para el diseño responsive, <strong>React Hook Form 7.45+</strong> para la gestión de formularios, <strong>Axios 1.6+</strong> para las peticiones HTTP, y <strong>React Icons 5.5+</strong> para iconografía.</p>
+
+<p>El <strong>backend</strong> se implementa con <strong>Express.js 4.18+</strong>, <strong>Node.js 20+</strong>, y utiliza <strong>PostgreSQL 15+</strong> como base de datos relacional. Para la autenticación se utiliza <strong>JWT (JSON Web Tokens) 9.0+</strong> con almacenamiento en cookies seguras, <strong>bcrypt 5.1+</strong> para el cifrado de contraseñas, <strong>Nodemailer 7.0+</strong> para el envío de emails (recuperación de contraseña, confirmaciones de pago), y <strong>Joi 17.11+</strong> para la validación de datos.</p>
+
+<p>El sistema puede integrarse con <strong>Railway</strong>, <strong>Render</strong>, o <strong>Vercel</strong> para despliegue automatizado, y con <strong>Mercado Pago (sandbox/productivo)</strong> para pagos en línea mediante <strong>Checkout Pro</strong> y <strong>webhooks</strong> para sincronización automática de estados de pago.</p>
+
+<p>Las imágenes de productos se almacenan en <strong>AWS S3</strong> (Amazon Simple Storage Service) mediante el SDK oficial <strong>@aws-sdk/client-s3 3.927+</strong> para optimizar la carga, disponibilidad y escalabilidad. El sistema también soporta almacenamiento local durante el desarrollo.</p>
+
+<h2>2.5 Suposiciones y Dependencias</h2>
+
+<ul>
+    <li>Los usuarios cuentan con conexión a Internet estable y un navegador actualizado.</li>
+    <li>Mercado Pago mantiene sus endpoints disponibles en modo sandbox y producción.</li>
+    <li>Los administradores disponen de credenciales seguras y acceso autorizado al panel.</li>
+    <li>Las librerías externas utilizadas (bcrypt, JWT, axios, React Router, etc.) se mantendrán activas y actualizadas.</li>
+    <li>AWS S3 mantiene disponibilidad y los servicios de almacenamiento funcionan correctamente.</li>
+</ul>
+
+<h2>2.6 Restricciones</h2>
+
+<ul>
+    <li>El sistema se desarrollará bajo licencia académica y no podrá ser distribuido comercialmente.</li>
+    <li>Las operaciones de pago estarán limitadas al entorno sandbox mientras dure la etapa de pruebas.</li>
+    <li>Los datos de usuarios se ajustarán a la Ley 25.326 de Protección de Datos Personales (Argentina).</li>
+    <li>El tiempo máximo de respuesta por API no deberá superar 2 segundos en promedio.</li>
+    <li>El sistema implementa bloqueo automático de cuentas tras 5 intentos fallidos de inicio de sesión.</li>
+</ul>
+
+<h1 class="page-break">3. Requisitos Específicos</h1>
+
+<h2>3.1 Requisitos Funcionales (RF)</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Código</th>
+            <th>Descripción</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="tabla">RF-01</td>
+            <td>El sistema permitirá la visualización del catálogo de productos con filtros por categoría, autor y precio (mínimo y máximo).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-02</td>
+            <td>Los usuarios podrán realizar búsquedas por título, autor o palabra clave con resultados dinámicos. Si hay un solo resultado, se redirige automáticamente al detalle del producto.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-03</td>
+            <td>Los visitantes podrán visualizar el catálogo completo sin necesidad de iniciar sesión, incluyendo secciones de Destacados, Novedades y Promociones.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-04</td>
+            <td>Solo los usuarios autenticados podrán agregar productos al carrito o realizar compras. Los productos sin stock disponible no podrán agregarse al carrito.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-05</td>
+            <td>El sistema permitirá agregar, modificar cantidades y eliminar productos del carrito. El carrito se mantiene persistente en la base de datos.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-06</td>
+            <td>Los usuarios autenticados podrán finalizar el proceso de compra mediante Mercado Pago, previa validación de dirección de envío (mínimo 10 caracteres).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-07</td>
+            <td>El sistema integrará la pasarela de pago Mercado Pago (Checkout Pro), validando resultados por webhook. Al iniciar el pago, se reserva temporalmente el stock por 15 minutos (TTL). Si el pago no se completa en ese tiempo, la reserva expira y el stock se libera automáticamente mediante un job periódico.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-08</td>
+            <td>Los usuarios podrán consultar el historial y estado de sus pedidos, agrupados en tres categorías: "Más tarde" (pendientes), "En Camino" (en envío) e "Historial" (completadas, entregadas o canceladas).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-09</td>
+            <td>El administrador (con permiso "Usuarios") y el Super Administrador podrán gestionar usuarios (altas, bajas, modificaciones, roles) y asignar permisos granulares (Dashboard, Productos, Órdenes, Usuarios, Ingresos, Auditoría) a otros administradores.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-10</td>
+            <td>El administrador (con permiso "Productos") y el Super Administrador podrán gestionar productos, categorías, precios (incluyendo precios promocionales), stock, descripciones y subir imágenes a AWS S3.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-11</td>
+            <td>El administrador (con permiso "Órdenes") y el Super Administrador podrán visualizar y actualizar el estado de pedidos y pagos, incluyendo la gestión de órdenes con error y la sincronización manual con Mercado Pago.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-12</td>
+            <td>El sistema permitirá generar un PDF imprimible del catálogo completo, incluyendo portada, título y autor, con campos opcionales (SKU, categoría, precio, stock, descripción breve).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-13</td>
+            <td>El sistema registrará logs de auditoría y operaciones críticas (login, logout, creación/modificación/eliminación de productos, cambios de estado de órdenes, asignación de permisos, etc.).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-14</td>
+            <td>El sistema deberá mostrar mensajes claros ante errores de validación o fallos de conexión, con manejo de errores tanto en frontend como en backend.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-15</td>
+            <td>El sistema validará la consistencia de los datos antes de procesar formularios o guardar información, utilizando Joi para validación en backend y React Hook Form en frontend.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-16</td>
+            <td>El sistema permitirá a los usuarios recuperar su contraseña mediante email con token de seguridad que expira en 1 hora. El proceso incluye solicitud de recuperación, envío de email con enlace, y restablecimiento de contraseña.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-17</td>
+            <td>El sistema bloqueará automáticamente las cuentas tras 5 intentos fallidos de inicio de sesión, implementando un mecanismo de seguridad contra ataques de fuerza bruta.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-18</td>
+            <td>El sistema implementará un job automático que verifica periódicamente las órdenes en estado "en_pago" que han superado su TTL (15 minutos). Estas órdenes se vuelven a estado "pendiente", se libera el stock reservado y se reactiva el carrito del usuario.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-19</td>
+            <td>El sistema permitirá a los usuarios guardar su carrito "para más tarde", creando una orden en estado "pendiente" que puede pagarse posteriormente desde la sección "Mis Órdenes".</td>
+        </tr>
+        <tr>
+            <td class="tabla">RF-20</td>
+            <td>El sistema mostrará productos con precio promocional destacado en la sección "Promociones" y aplicará automáticamente el precio promocional cuando sea menor al precio regular.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>3.2 Requisitos No Funcionales (RNF)</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Código</th>
+            <th>Descripción</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="tabla">RNF-01</td>
+            <td>El sistema debe garantizar alta disponibilidad, rendimiento y seguridad.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-02</td>
+            <td>Rendimiento: las consultas al catálogo no deberán superar los 2 segundos promedio. Se utilizan índices en base de datos para optimizar las consultas.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-03</td>
+            <td>Disponibilidad: 99% en ambientes productivos.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-04</td>
+            <td>Seguridad: uso de HTTPS, cifrado bcrypt para contraseñas, JWT para autenticación y tokens de sesión en cookies seguras. Bloqueo automático tras 5 intentos fallidos.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-05</td>
+            <td>Accesibilidad: cumplimiento de WCAG 2.1 nivel AA.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-06</td>
+            <td>Compatibilidad: soporte para navegadores modernos (Chrome, Edge, Firefox, Safari) y resolución mínima 1366×768. Diseño responsive con Tailwind CSS.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-07</td>
+            <td>Calidad: pruebas unitarias (Jest), integración (Postman), y cobertura mínima del 80%.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-08</td>
+            <td>Operaciones de reserva/consumo en transacción y con checks condicionales; webhooks idempotentes mediante índice único en mp_id. Las reservas de stock se realizan con validación atómica para evitar condiciones de carrera.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-09</td>
+            <td>Job de liberación de reservas expiradas: proceso automático que verifica órdenes "en_pago" con fecha_expiracion vencida, libera stock_reserved y reactiva el carrito del usuario.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-10</td>
+            <td>Almacenamiento de imágenes: integración con AWS S3 para almacenamiento escalable y CDN para distribución global de contenido.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RNF-11</td>
+            <td>Validación de datos: uso de Joi en backend para validación de esquemas y React Hook Form en frontend para validación en tiempo real.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>3.3 Requisitos de Interfaz de Usuario</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Código</th>
+            <th>Descripción</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="tabla">RI-01</td>
+            <td>El sistema presentará el catálogo principal en formato grilla responsive, con imágenes de productos, título, autor, precio (y precio promocional si aplica), y stock disponible. La grilla se adapta a diferentes tamaños de pantalla (móvil, tablet, desktop).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-02</td>
+            <td>La página de detalle de producto mostrará imagen ampliada, título, autor, categoría, descripción completa, precio regular, precio promocional (si aplica), stock disponible, y selector de cantidad con botón "Agregar al Carrito".</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-03</td>
+            <td>El carrito mostrará lista de productos con imagen, título, precio unitario, cantidad modificable, subtotal por producto, y total general. Incluirá botones para "Proceder al Checkout", "Dejar para más tarde", "Continuar Comprando" y "Vaciar Carrito".</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-04</td>
+            <td>El sistema integrará el checkout de Mercado Pago mediante redirección a su plataforma. El proceso incluye validación de dirección de envío y reserva temporal de stock antes de la redirección.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-05</td>
+            <td>El sistema ofrecerá formularios simples de inicio de sesión, registro y recuperación de contraseña, con validación en tiempo real y mensajes de error claros. Los formularios utilizan React Hook Form para una mejor experiencia de usuario.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-06</td>
+            <td>El panel administrativo presentará un dashboard con estadísticas generales (productos, órdenes, usuarios, pagos, ingresos) y navegación lateral con acceso según permisos asignados.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-07</td>
+            <td>La sección "Mis Órdenes" agrupará las órdenes en tres categorías visuales: "Más tarde" (icono de reloj), "En Camino" (icono de camión) e "Historial" (icono de historial), facilitando la navegación del usuario.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-08</td>
+            <td>El sistema mostrará alertas y mensajes de confirmación claros para todas las acciones del usuario (agregar al carrito, actualizar perfil, cambios de estado de órdenes, etc.).</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-09</td>
+            <td>La barra de navegación incluirá buscador central, enlaces a secciones (Catálogo, Destacados, Novedades, Promociones), y acceso rápido a carrito (con contador), órdenes y perfil según el estado de autenticación.</td>
+        </tr>
+        <tr>
+            <td class="tabla">RI-10</td>
+            <td>El sistema será completamente responsive, adaptándose a dispositivos móviles con menú hamburguesa, sidebar deslizable y diseño optimizado para pantallas táctiles.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h1 class="page-break">4. Modelo de Datos</h1>
+
+<h2>4.1 Estructura de Base de Datos</h2>
+
+<p>El sistema utiliza PostgreSQL 15+ como base de datos relacional. A continuación se describe la estructura principal:</p>
+
+<h3>4.1.1 Tabla: usuarios</h3>
+<ul>
+    <li><strong>id_usuario</strong> (SERIAL PRIMARY KEY): Identificador único del usuario</li>
+    <li><strong>nombre</strong> (VARCHAR(100) NOT NULL): Nombre del usuario</li>
+    <li><strong>apellido</strong> (VARCHAR(100) NOT NULL): Apellido del usuario</li>
+    <li><strong>email</strong> (VARCHAR(150) UNIQUE NOT NULL): Email único del usuario</li>
+    <li><strong>password_hash</strong> (VARCHAR(255) NOT NULL): Contraseña cifrada con bcrypt</li>
+    <li><strong>direccion_envio</strong> (VARCHAR(500)): Dirección de envío (opcional, se puede actualizar en perfil)</li>
+    <li><strong>rol</strong> (VARCHAR(20) DEFAULT 'cliente'): Rol del usuario ('cliente', 'admin', 'super_admin')</li>
+    <li><strong>es_super_admin</strong> (BOOLEAN DEFAULT false): Flag para identificar al Super Administrador</li>
+    <li><strong>intentos_fallidos</strong> (INTEGER DEFAULT 0): Contador de intentos fallidos de inicio de sesión</li>
+    <li><strong>cuenta_bloqueada_hasta</strong> (TIMESTAMP NULL): Timestamp hasta cuando la cuenta está bloqueada</li>
+    <li><strong>reset_password_token</strong> (VARCHAR(255) NULL): Token para restablecimiento de contraseña</li>
+    <li><strong>reset_password_expires</strong> (TIMESTAMP NULL): Expiración del token (1 hora)</li>
+</ul>
+
+<h3>4.1.2 Tabla: productos</h3>
+<ul>
+    <li><strong>id_producto</strong> (SERIAL PRIMARY KEY): Identificador único del producto</li>
+    <li><strong>titulo</strong> (VARCHAR(200) NOT NULL): Título del libro</li>
+    <li><strong>autor</strong> (VARCHAR(150) NOT NULL): Autor del libro</li>
+    <li><strong>categoria</strong> (VARCHAR(100)): Categoría del libro</li>
+    <li><strong>precio</strong> (DECIMAL(10,2) NOT NULL): Precio regular</li>
+    <li><strong>precio_promocional</strong> (DECIMAL(10,2)): Precio promocional (debe ser menor al precio regular)</li>
+    <li><strong>stock</strong> (INTEGER NOT NULL DEFAULT 0): Stock total disponible</li>
+    <li><strong>stock_reserved</strong> (INTEGER NOT NULL DEFAULT 0): Stock reservado temporalmente</li>
+    <li><strong>imagen_url</strong> (TEXT): URL de la imagen en AWS S3</li>
+    <li><strong>descripcion</strong> (TEXT): Descripción detallada del producto</li>
+    <li><strong>fecha_creacion</strong> (TIMESTAMP DEFAULT CURRENT_TIMESTAMP): Fecha de creación para ordenar novedades</li>
+    <li><strong>Restricción:</strong> stock - stock_reserved >= 0 (garantiza disponibilidad coherente)</li>
+</ul>
+
+<h3>4.1.3 Tabla: carrito</h3>
+<ul>
+    <li><strong>id</strong> (SERIAL PRIMARY KEY): Identificador único del item</li>
+    <li><strong>usuario_id</strong> (INTEGER NOT NULL): Referencia a usuarios(id_usuario)</li>
+    <li><strong>producto_id</strong> (INTEGER NOT NULL): Referencia a productos(id_producto)</li>
+    <li><strong>cantidad</strong> (INTEGER NOT NULL): Cantidad del producto</li>
+    <li><strong>activo</strong> (BOOLEAN DEFAULT true): Indica si el item está activo</li>
+    <li><strong>fecha_agregado</strong> (TIMESTAMP DEFAULT CURRENT_TIMESTAMP): Fecha de agregado</li>
+    <li><strong>Índice único parcial:</strong> Solo un producto activo por usuario a la vez</li>
+</ul>
+
+<h3>4.1.4 Tabla: ordenes</h3>
+<ul>
+    <li><strong>id_orden</strong> (SERIAL PRIMARY KEY): Identificador único de la orden</li>
+    <li><strong>id_usuario</strong> (INTEGER NOT NULL): Referencia a usuarios(id_usuario)</li>
+    <li><strong>fecha_creacion</strong> (TIMESTAMP DEFAULT CURRENT_TIMESTAMP): Fecha de creación</li>
+    <li><strong>fecha_expiracion</strong> (TIMESTAMP): TTL para reservas temporales (15 min desde inicio de pago)</li>
+    <li><strong>direccion_envio</strong> (VARCHAR(500) NOT NULL): Dirección de envío</li>
+    <li><strong>estado</strong> (VARCHAR(30) DEFAULT 'pendiente'): Estado de la orden</li>
+    <li><strong>Estados posibles:</strong> 'pendiente', 'en_pago', 'pagado', 'en_envio', 'entregada', 'cancelado', 'cancelada_usuario', 'cancelada_administrador', 'cancelada_mp', 'rechazado', 'error', 'expirada'</li>
+</ul>
+
+<h3>4.1.5 Tabla: orden_items</h3>
+<ul>
+    <li><strong>id_item</strong> (SERIAL PRIMARY KEY): Identificador único del item</li>
+    <li><strong>id_orden</strong> (INTEGER NOT NULL): Referencia a ordenes(id_orden)</li>
+    <li><strong>id_producto</strong> (INTEGER NOT NULL): Referencia a productos(id_producto)</li>
+    <li><strong>cantidad</strong> (INTEGER NOT NULL): Cantidad del producto</li>
+    <li><strong>precio_unitario</strong> (DECIMAL(10,2) NOT NULL): Precio unitario al momento de la compra</li>
+</ul>
+
+<h3>4.1.6 Tabla: pagos</h3>
+<ul>
+    <li><strong>id_pago</strong> (SERIAL PRIMARY KEY): Identificador único del pago</li>
+    <li><strong>id_orden</strong> (INTEGER NOT NULL): Referencia a ordenes(id_orden)</li>
+    <li><strong>mp_id</strong> (VARCHAR(100)): ID de Mercado Pago (único para garantizar idempotencia)</li>
+    <li><strong>estado</strong> (VARCHAR(50)): Estado del pago ('approved', 'pending', 'rejected', 'cancelled', 'error')</li>
+    <li><strong>monto</strong> (DECIMAL(10,2) NOT NULL): Monto del pago</li>
+    <li><strong>fecha_pago</strong> (TIMESTAMP): Fecha del pago</li>
+    <li><strong>Índice único:</strong> mp_id (cuando no es NULL) para garantizar idempotencia de webhooks</li>
+</ul>
+
+<h3>4.1.7 Tabla: auditoria</h3>
+<ul>
+    <li><strong>id_evento</strong> (SERIAL PRIMARY KEY): Identificador único del evento</li>
+    <li><strong>tipo</strong> (VARCHAR(50) NOT NULL): Tipo de evento (login, logout, producto_creado, etc.)</li>
+    <li><strong>usuario</strong> (VARCHAR(100)): Usuario que realizó la acción</li>
+    <li><strong>fecha</strong> (TIMESTAMP DEFAULT CURRENT_TIMESTAMP): Fecha del evento</li>
+</ul>
+
+<h3>4.1.8 Tabla: permisos</h3>
+<ul>
+    <li><strong>id_permiso</strong> (SERIAL PRIMARY KEY): Identificador único del permiso</li>
+    <li><strong>nombre_permiso</strong> (VARCHAR(50) UNIQUE NOT NULL): Nombre del permiso</li>
+    <li><strong>descripcion</strong> (TEXT): Descripción del permiso</li>
+    <li><strong>Permisos disponibles:</strong> 'Dashboard', 'Productos', 'Ordenes', 'Usuarios', 'Ingresos', 'Auditoria'</li>
+</ul>
+
+<h3>4.1.9 Tabla: permisos_usuarios</h3>
+<ul>
+    <li><strong>id_usuario</strong> (INTEGER NOT NULL): Referencia a usuarios(id_usuario)</li>
+    <li><strong>id_permiso</strong> (INTEGER NOT NULL): Referencia a permisos(id_permiso)</li>
+    <li><strong>PRIMARY KEY:</strong> (id_usuario, id_permiso)</li>
+</ul>
+
+<h2>4.2 Reglas de Negocio Implementadas</h2>
+
+<ol>
+    <li><strong>Reserva temporal de stock:</strong> Al iniciar el proceso de pago, el stock se reserva temporalmente por 15 minutos (TTL configurable). El stock disponible visible = stock - stock_reserved.</li>
+    
+    <li><strong>Validación de stock:</strong> Los productos sin stock disponible (stock - stock_reserved = 0) no pueden agregarse al carrito.</li>
+    
+    <li><strong>Descuento de stock:</strong> El stock definitivo se descuenta solo cuando el estado de la orden cambia a 'pagado'.</li>
+    
+    <li><strong>Liberación de stock:</strong> Los estados 'cancelado', 'rechazado', 'expirada' liberan el stock_reserved. Cuando se cancela/rechaza una orden 'en_pago', también se reactiva el carrito del usuario.</li>
+    
+    <li><strong>Estado 'error':</strong> Mantiene stock_reserved hasta intervención de administrador.</li>
+    
+    <li><strong>Job automático:</strong> Verifica periódicamente órdenes 'en_pago' que superaron fecha_expiracion. Vuelve la orden a 'pendiente', libera stock_reserved, reactiva el carrito y limpia fecha_expiracion.</li>
+    
+    <li><strong>Flujo de pago:</strong> crearOrden (pendiente, sin reserva) → iniciarPago (en_pago, con reserva) → resultado (pagado/cancelado/rechazado/error). Si expira 'en_pago': vuelve a 'pendiente' y reactiva carrito.</li>
+    
+    <li><strong>Sistema de permisos:</strong> Los administradores tienen acceso solo a las áreas para las que tienen permisos asignados. El Super Administrador tiene acceso automático a todo.</li>
+    
+    <li><strong>Bloqueo de cuenta:</strong> Tras 5 intentos fallidos de inicio de sesión, la cuenta se bloquea temporalmente.</li>
+    
+    <li><strong>Recuperación de contraseña:</strong> Token de seguridad con expiración de 1 hora, enviado por email mediante Nodemailer.</li>
+</ol>
+
+<h1 class="page-break">5. Arquitectura del Sistema</h1>
+
+<h2>5.1 Arquitectura General</h2>
+
+<p>El sistema sigue una arquitectura cliente-servidor con separación clara entre frontend y backend:</p>
+
+<ul>
+    <li><strong>Frontend:</strong> Aplicación React 18.2+ construida con Vite 4.4+, utilizando React Router DOM 7.9+ para enrutamiento, Tailwind CSS 3.3+ para estilos, React Hook Form 7.45+ para formularios, y Axios 1.6+ para comunicación con la API.</li>
+    
+    <li><strong>Backend:</strong> API REST desarrollada con Express.js 4.18+ y Node.js 20+, utilizando PostgreSQL 15+ como base de datos, JWT para autenticación, bcrypt para cifrado de contraseñas, Joi para validación, y Nodemailer para envío de emails.</li>
+    
+    <li><strong>Almacenamiento:</strong> AWS S3 mediante @aws-sdk/client-s3 3.927+ para imágenes de productos.</li>
+    
+    <li><strong>Integración Externa:</strong> Mercado Pago mediante Checkout Pro y webhooks para sincronización de estados de pago.</li>
+</ul>
+
+<h2>5.2 Flujo de Datos</h2>
+
+<ol>
+    <li>El usuario interactúa con la interfaz React en el navegador.</li>
+    <li>Las peticiones HTTP se realizan mediante Axios a la API REST de Express.</li>
+    <li>Express valida los datos con Joi y autentica las peticiones con JWT.</li>
+    <li>Las consultas se ejecutan en PostgreSQL mediante el driver pg.</li>
+    <li>Las imágenes se almacenan y recuperan desde AWS S3.</li>
+    <li>Los pagos se procesan mediante redirección a Mercado Pago y sincronización mediante webhooks.</li>
+    <li>Los emails se envían mediante Nodemailer (recuperación de contraseña, confirmaciones).</li>
+</ol>
+
+<h2>5.3 Seguridad</h2>
+
+<ul>
+    <li><strong>Autenticación:</strong> JWT almacenado en cookies seguras (httpOnly, secure en producción).</li>
+    <li><strong>Cifrado:</strong> Contraseñas cifradas con bcrypt (10 rounds).</li>
+    <li><strong>Validación:</strong> Validación de datos en backend (Joi) y frontend (React Hook Form).</li>
+    <li><strong>Protección:</strong> Bloqueo automático tras 5 intentos fallidos de inicio de sesión.</li>
+    <li><strong>HTTPS:</strong> Comunicación cifrada en producción.</li>
+    <li><strong>CORS:</strong> Configuración de CORS para permitir solo orígenes autorizados.</li>
+</ul>
+
+<h1 class="page-break">6. Casos de Uso Principales</h1>
+
+<h2>6.1 Caso de Uso: Compra de Productos</h2>
+
+<ol>
+    <li>Usuario (visitante o autenticado) navega por el catálogo o realiza una búsqueda.</li>
+    <li>Usuario selecciona un producto y visualiza su detalle.</li>
+    <li>Si el usuario no está autenticado, debe iniciar sesión o registrarse.</li>
+    <li>Usuario agrega productos al carrito (validación de stock disponible).</li>
+    <li>Usuario accede al carrito y revisa los productos.</li>
+    <li>Usuario procede al checkout, ingresando o confirmando dirección de envío.</li>
+    <li>Sistema crea orden en estado "pendiente" y vacía el carrito.</li>
+    <li>Sistema inicia proceso de pago: reserva stock temporalmente (15 min TTL) y redirige a Mercado Pago.</li>
+    <li>Usuario completa el pago en Mercado Pago.</li>
+    <li>Mercado Pago envía webhook al sistema con el resultado del pago.</li>
+    <li>Sistema actualiza el estado de la orden y el pago según el resultado.</li>
+    <li>Si el pago es exitoso: se descuenta el stock definitivamente y se envía email de confirmación.</li>
+    <li>Si el pago falla o expira: se libera el stock reservado y se reactiva el carrito.</li>
+</ol>
+
+<h2>6.2 Caso de Uso: Gestión Administrativa de Productos</h2>
+
+<ol>
+    <li>Administrador (con permiso "Productos") o Super Administrador inicia sesión.</li>
+    <li>Sistema verifica permisos y muestra el panel administrativo con acceso a "Productos".</li>
+    <li>Administrador accede a la sección de productos.</li>
+    <li>Administrador puede crear, editar o eliminar productos.</li>
+    <li>Al crear/editar: administrador completa formulario (título, autor, categoría, precio, precio promocional, stock, descripción).</li>
+    <li>Administrador sube imagen del producto (se almacena en AWS S3).</li>
+    <li>Sistema valida los datos y guarda el producto en la base de datos.</li>
+    <li>Sistema registra la acción en la tabla de auditoría.</li>
+</ol>
+
+<h2>6.3 Caso de Uso: Recuperación de Contraseña</h2>
+
+<ol>
+    <li>Usuario accede a la página "Olvidé mi contraseña".</li>
+    <li>Usuario ingresa su email registrado.</li>
+    <li>Sistema valida que el email existe en la base de datos.</li>
+    <li>Sistema genera token de seguridad único y lo almacena con expiración de 1 hora.</li>
+    <li>Sistema envía email con enlace de recuperación mediante Nodemailer.</li>
+    <li>Usuario recibe el email y hace clic en el enlace.</li>
+    <li>Sistema valida el token y muestra formulario de restablecimiento.</li>
+    <li>Usuario ingresa nueva contraseña (debe cumplir requisitos de seguridad).</li>
+    <li>Sistema valida la contraseña, la cifra con bcrypt y actualiza la base de datos.</li>
+    <li>Sistema limpia el token y registra la acción en auditoría.</li>
+    <li>Usuario puede iniciar sesión con su nueva contraseña.</li>
+</ol>
+
+<h1 class="page-break">7. Consideraciones de Implementación</h1>
+
+<h2>7.1 Gestión de Stock</h2>
+
+<p>El sistema implementa un mecanismo de reserva temporal de stock para evitar condiciones de carrera y garantizar la disponibilidad durante el proceso de pago:</p>
+
+<ul>
+    <li>Al iniciar el pago, se reserva el stock por 15 minutos (TTL configurable).</li>
+    <li>El stock disponible visible = stock - stock_reserved.</li>
+    <li>Si el pago es exitoso, se descuenta el stock definitivamente.</li>
+    <li>Si el pago falla o expira, se libera el stock reservado automáticamente.</li>
+    <li>Un job periódico verifica y libera reservas expiradas, reactivando el carrito del usuario.</li>
+</ul>
+
+<h2>7.2 Integración con Mercado Pago</h2>
+
+<p>El sistema integra Mercado Pago mediante:</p>
+
+<ul>
+    <li><strong>Checkout Pro:</strong> Redirección del usuario a la plataforma de Mercado Pago para completar el pago.</li>
+    <li><strong>Webhooks:</strong> Notificaciones automáticas de Mercado Pago sobre cambios en el estado de los pagos.</li>
+    <li><strong>Idempotencia:</strong> Índice único en mp_id para garantizar que cada pago de Mercado Pago se procese solo una vez.</li>
+    <li><strong>Sincronización manual:</strong> Los administradores pueden sincronizar manualmente el estado de pagos desde el panel.</li>
+</ul>
+
+<h2>7.3 Sistema de Permisos</h2>
+
+<p>El sistema implementa un sistema de permisos granular que permite:</p>
+
+<ul>
+    <li>Asignar permisos específicos a administradores (Dashboard, Productos, Órdenes, Usuarios, Ingresos, Auditoría).</li>
+    <li>El Super Administrador tiene acceso automático a todas las áreas.</li>
+    <li>Los administradores solo ven y pueden acceder a las áreas para las que tienen permisos.</li>
+    <li>Los permisos se validan tanto en frontend (ocultando opciones) como en backend (validando acceso a endpoints).</li>
+</ul>
+
+<h2>7.4 Auditoría y Logs</h2>
+
+<p>El sistema registra todas las operaciones críticas en la tabla de auditoría:</p>
+
+<ul>
+    <li>Autenticación: login, logout, registro, solicitud de recuperación de contraseña, restablecimiento de contraseña.</li>
+    <li>Productos: creación, actualización, eliminación.</li>
+    <li>Órdenes: creación, actualización de estado, cancelación.</li>
+    <li>Pagos: creación, actualización de estado, verificación.</li>
+    <li>Usuarios: creación, actualización, eliminación, asignación de permisos.</li>
+</ul>
+
+<h1 class="page-break">8. Criterios de Aceptación</h1>
+
+<h2>8.1 Funcionalidad</h2>
+
+<ul>
+    <li>El sistema debe permitir a los visitantes navegar y buscar productos sin autenticación.</li>
+    <li>El sistema debe requerir autenticación para agregar productos al carrito y realizar compras.</li>
+    <li>El sistema debe validar el stock disponible antes de permitir agregar productos al carrito.</li>
+    <li>El sistema debe reservar stock temporalmente durante el proceso de pago y liberarlo si el pago falla o expira.</li>
+    <li>El sistema debe sincronizar automáticamente los estados de pago mediante webhooks de Mercado Pago.</li>
+    <li>El sistema debe permitir a los administradores gestionar productos, usuarios, órdenes y pagos según sus permisos.</li>
+    <li>El sistema debe registrar todas las operaciones críticas en la tabla de auditoría.</li>
+</ul>
+
+<h2>8.2 Rendimiento</h2>
+
+<ul>
+    <li>Las consultas al catálogo deben responder en menos de 2 segundos en promedio.</li>
+    <li>El sistema debe manejar al menos 100 usuarios concurrentes sin degradación significativa.</li>
+    <li>Las imágenes deben cargarse desde AWS S3 con tiempos de respuesta aceptables.</li>
+</ul>
+
+<h2>8.3 Seguridad</h2>
+
+<ul>
+    <li>Las contraseñas deben estar cifradas con bcrypt antes de almacenarse.</li>
+    <li>Las sesiones deben utilizar JWT almacenado en cookies seguras.</li>
+    <li>El sistema debe bloquear cuentas tras 5 intentos fallidos de inicio de sesión.</li>
+    <li>Los tokens de recuperación de contraseña deben expirar en 1 hora.</li>
+    <li>Las validaciones deben realizarse tanto en frontend como en backend.</li>
+</ul>
+
+<h2>8.4 Usabilidad</h2>
+
+<ul>
+    <li>El sistema debe ser responsive y funcionar correctamente en dispositivos móviles, tablets y desktops.</li>
+    <li>Los mensajes de error deben ser claros y orientar al usuario sobre cómo resolver el problema.</li>
+    <li>El proceso de compra debe ser intuitivo y guiar al usuario paso a paso.</li>
+    <li>El panel administrativo debe ser fácil de navegar y mostrar información relevante según los permisos del usuario.</li>
+</ul>
+
+<h1 class="page-break">9. Conclusiones</h1>
+
+<p>Este documento de Especificación de Requisitos de Software (SRS) describe de manera completa y detallada el sistema <strong>MyneBooks Store</strong>, incluyendo todas las funcionalidades implementadas, la arquitectura técnica, el modelo de datos, y los criterios de aceptación.</p>
+
+<p>El sistema ha sido desarrollado siguiendo las mejores prácticas de desarrollo web moderno, utilizando tecnologías actuales y escalables, con un enfoque en la seguridad, la usabilidad y el rendimiento.</p>
+
+<p>La implementación incluye características avanzadas como reserva temporal de stock, sistema de permisos granular, integración completa con Mercado Pago, almacenamiento en AWS S3, y un sistema robusto de auditoría que registra todas las operaciones críticas del sistema.</p>
+
+<p>Este documento sirve como referencia formal para el desarrollo, validación, mantenimiento y futuras mejoras del sistema.</p>
+
+<hr>
+
+<p style="text-align: center; margin-top: 30pt;">
+    <strong>Documento SRS MyneBooks Store v1.3</strong><br>
+    Actualizado según implementación real del proyecto<br>
+    UTN Wizards - Enero 2025
+</p>
+
+</body>
+</html>
+

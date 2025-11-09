@@ -1,0 +1,110 @@
+@startuml Secuencia_WebhookMercadoPago
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Procesar Webhook de Mercado Pago\nMyneBooks Store
+
+participant "Mercado\nPago" as MP #LightGray
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+participant "Sistema de\nCarrito" as Carrito #LightPink
+
+MP -> Backend: 1. POST /api/pagos/webhook\n{payment_id, status, external_reference}\nHeader: x-signature
+
+Backend -> Backend: 2. Validar firma del webhook\n(validarFirmaWebhook con MP_WEBHOOK_SECRET)
+
+alt Firma inválida
+    Backend -> BD: 3a. INSERT INTO auditoria\n(tipo='webhook_rechazado_firma_invalida')
+    BD -> Backend: 4a. Registrado
+    Backend -> MP: 5a. Error 401: Firma inválida
+else Firma válida
+    Backend -> Backend: 3b. Extraer datos del webhook\n(payment_id, status, external_reference)
+    
+    Backend -> BD: 4b. SELECT pago por mp_id\nWHERE mp_id = ?
+    BD -> Backend: 5b. Resultado
+    
+    alt Webhook ya procesado (idempotencia)
+        Backend -> Backend: 6a. Verificar si pago existe
+        Backend -> MP: 7a. 200 OK: Webhook ya procesado\n(idempotente)
+        note right of Backend: Previene procesamiento\nduplicado
+    else Webhook nuevo
+        Backend -> Backend: 6b. Procesar webhook\n(procesarWebhook)
+        Backend -> Backend: 7b. Extraer orden_id\nde external_reference
+        
+        Backend -> BD: 8b. SELECT orden\nWHERE id_orden = ?
+        BD -> Backend: 9b. Datos de la orden
+        
+        Backend -> BD: 10b. SELECT items de orden
+        BD -> Backend: 11b. Items de la orden
+        
+        Backend -> BD: 12b. BEGIN TRANSACTION
+        
+        alt Status = 'approved' (Pago exitoso)
+            Backend -> BD: 13a. UPDATE ordenes\nSET estado='pagado'
+            BD -> Backend: 14a. Orden actualizada
+            
+            Backend -> BD: 15a. UPDATE productos\nSET stock = stock - cantidad\nstock_reserved = stock_reserved - cantidad\nWHERE stock_reserved >= cantidad
+            BD -> Backend: 16a. Stock descontado permanentemente
+            
+            Backend -> BD: 17a. INSERT INTO pagos\n(mp_id, id_orden, estado='approved', monto, fecha_pago)
+            BD -> Backend: 18a. Pago registrado
+            
+            Backend -> BD: 19a. INSERT INTO auditoria\n(tipo='pago_aprobado')
+            BD -> Backend: 20a. Registrado
+            
+        else Status = 'rejected' (Pago rechazado)
+            Backend -> BD: 13b. UPDATE ordenes\nSET estado='rechazado'
+            BD -> Backend: 14b. Orden actualizada
+            
+            Backend -> BD: 15b. UPDATE productos\nSET stock_reserved = stock_reserved - cantidad\nWHERE stock_reserved >= cantidad
+            BD -> Backend: 16b. Stock reservado liberado
+            
+            Backend -> BD: 17b. INSERT INTO pagos\n(mp_id, id_orden, estado='rejected', monto)
+            BD -> Backend: 18b. Pago registrado
+            
+            Backend -> Carrito: 19b. Reactivar carrito\n(reactivarCarritoDesdeOrden)
+            Carrito -> BD: 20b. UPDATE carrito SET activo=true\nWHERE usuario_id = ? AND producto_id IN (...)
+            BD -> Carrito: 21b. Carrito reactivado
+            Carrito -> Backend: 22b. Carrito reactivado
+            
+            Backend -> BD: 23b. INSERT INTO auditoria\n(tipo='pago_rechazado')
+            BD -> Backend: 24b. Registrado
+            
+        else Status = 'pending' (Pago pendiente)
+            Backend -> BD: 13c. UPDATE ordenes\nSET estado='en_pago' (mantiene)
+            BD -> Backend: 14c. Orden actualizada
+            
+            Backend -> BD: 15c. INSERT INTO pagos\n(mp_id, id_orden, estado='pending', monto)
+            BD -> Backend: 16c. Pago registrado
+            
+            Backend -> BD: 17c. INSERT INTO auditoria\n(tipo='pago_pendiente')
+            BD -> Backend: 18c. Registrado
+            
+        else Status = 'cancelled' (Pago cancelado)
+            Backend -> BD: 13d. UPDATE ordenes\nSET estado='cancelada_mp'
+            BD -> Backend: 14d. Orden actualizada
+            
+            Backend -> BD: 15d. UPDATE productos\nSET stock_reserved = stock_reserved - cantidad
+            BD -> Backend: 16d. Stock reservado liberado
+            
+            Backend -> Carrito: 17d. Reactivar carrito
+            Carrito -> BD: 18d. UPDATE carrito SET activo=true
+            BD -> Carrito: 19d. Carrito reactivado
+            Carrito -> Backend: 20d. Carrito reactivado
+            
+            Backend -> BD: 21d. INSERT INTO pagos\n(mp_id, id_orden, estado='cancelled', monto)
+            BD -> Backend: 22d. Pago registrado
+            
+            Backend -> BD: 23d. INSERT INTO auditoria\n(tipo='pago_cancelado')
+            BD -> Backend: 24d. Registrado
+        end
+        
+        Backend -> BD: 25b. COMMIT TRANSACTION
+        Backend -> MP: 26b. 200 OK: Webhook procesado
+    end
+end
+
+@enduml
+

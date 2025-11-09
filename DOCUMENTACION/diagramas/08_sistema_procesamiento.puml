@@ -1,0 +1,62 @@
+@startuml CasosDeUso_SistemaProcesamiento
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Sistema de Procesamiento Automático\nMyneBooks Store
+
+actor MercadoPago as "Mercado Pago\n(Sistema externo)" #LightGray
+actor Sistema as "Sistema\n(Jobs automáticos)" #LightPink
+
+usecase UC50 as "UC-50: Procesar webhook de Mercado Pago\n(actualizar estado de pago)"
+usecase UC51 as "UC-51: Liberar reservas expiradas\n(job automático cada 5 min)"
+usecase UC52 as "UC-52: Bloquear cuenta tras 5 intentos fallidos"
+
+' Relaciones
+MercadoPago --> UC50
+Sistema --> UC50
+Sistema --> UC51
+Sistema --> UC52
+
+' Notas
+note right of UC50
+  Procesar webhook de Mercado Pago:
+  - Valida firma del webhook (MP_WEBHOOK_SECRET)
+  - Idempotente: procesa solo una vez por mp_id
+  - Estados: approved, rejected, pending, cancelled
+  - Actualiza estado de orden y pago
+  - Aproba: descuenta stock permanentemente
+  - Rechazado/Cancelado: libera stock reservado
+  - Registra en tabla pagos
+end note
+
+note right of UC51
+  Liberar reservas expiradas:
+  - Job automático que se ejecuta cada 5 minutos
+  - Busca órdenes 'en_pago' con fecha_expiracion vencida
+  - Libera stock_reserved de productos
+  - Cambia estado a 'pendiente'
+  - Reactiva carrito del usuario
+  - Limpia fecha_expiracion
+  - Registra en auditoría
+end note
+
+note right of UC52
+  Bloquear cuenta automáticamente:
+  - Se activa tras 5 intentos fallidos de login
+  - Bloquea cuenta por 30 minutos
+  - Actualiza cuenta_bloqueada_hasta
+  - Incrementa intentos_fallidos
+  - Se reinicia al iniciar sesión exitosamente
+  - Protección contra ataques de fuerza bruta
+end note
+
+@enduml
+

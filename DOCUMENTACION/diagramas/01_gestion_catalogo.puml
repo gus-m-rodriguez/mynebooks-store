@@ -1,0 +1,68 @@
+@startuml CasosDeUso_GestionCatalogo
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Gestión de Catálogo\nMyneBooks Store
+
+actor Visitante as "Visitante\n(No autenticado)" #LightBlue
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+
+usecase UC01 as "UC-01: Navegar catálogo"
+usecase UC02 as "UC-02: Ver detalles de producto"
+usecase UC03 as "UC-03: Buscar productos\n(por título, autor, palabra clave)"
+usecase UC04 as "UC-04: Filtrar productos\n(por categoría, autor, precio)"
+
+' Relaciones
+Visitante --> UC01
+Visitante --> UC02
+Visitante --> UC03
+Visitante --> UC04
+
+Cliente --> UC01
+Cliente --> UC02
+Cliente --> UC03
+Cliente --> UC04
+
+' Notas
+note right of UC01
+  Permite navegar por el catálogo completo
+  de productos disponibles.
+  Accesible desde la barra de navegación.
+end note
+
+note right of UC02
+  Muestra información detallada:
+  - Imagen ampliada
+  - Título, autor, categoría
+  - Descripción completa
+  - Precio regular y promocional
+  - Stock disponible
+  - Selector de cantidad
+end note
+
+note right of UC03
+  Búsqueda en tiempo real por:
+  - Título del libro
+  - Nombre del autor
+  - Palabras clave
+  - Descripción
+end note
+
+note right of UC04
+  Filtros disponibles:
+  - Por categoría (Manga, Novela, etc.)
+  - Por autor
+  - Por rango de precio
+  - Combinación de filtros
+end note
+
+@enduml
+

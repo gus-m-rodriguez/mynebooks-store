@@ -1,0 +1,68 @@
+@startuml CasosDeUso_GestionOrdenes
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Gestión de Órdenes\nMyneBooks Store
+
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+
+usecase UC21 as "UC-21: Ver mis órdenes\n(agrupadas por estado)"
+usecase UC22 as "UC-22: Ver detalle de orden"
+usecase UC23 as "UC-23: Cancelar orden (usuario)"
+usecase UC24 as "UC-24: Reintentar pago de orden pendiente"
+
+' Relaciones
+Cliente --> UC21
+Cliente --> UC22
+Cliente --> UC23
+Cliente --> UC24
+
+' Extensiones
+UC22 ..> UC21 : <<extend>>
+UC24 ..> UC22 : <<extend>>
+
+' Notas
+note right of UC21
+  Ver mis órdenes agrupadas:
+  - "Más tarde": órdenes pendientes
+  - "En camino": órdenes pagadas/en_envio
+  - "Historial": órdenes entregadas/canceladas
+  - Filtros y búsqueda disponibles
+end note
+
+note right of UC22
+  Detalle de orden muestra:
+  - Información de la orden
+  - Items con precios
+  - Estado actual
+  - Dirección de envío
+  - Información de pago
+  - Historial de estados
+end note
+
+note right of UC23
+  Cancelar orden:
+  - Solo si está en 'pendiente' o 'en_pago'
+  - Libera stock reservado
+  - Cambia estado a 'cancelada_usuario'
+  - Reactiva carrito si aplica
+end note
+
+note right of UC24
+  Reintentar pago:
+  - Para órdenes pendientes
+  - Vuelve a iniciar proceso de pago
+  - Reserva stock nuevamente
+  - Redirige a Mercado Pago
+end note
+
+@enduml
+

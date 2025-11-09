@@ -1,0 +1,154 @@
+@startuml CasosDeUso_PanelAdministrativo
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Panel Administrativo\nMyneBooks Store
+
+actor Administrador as "Administrador\n(Con permisos)" #LightYellow
+actor SuperAdmin as "Super Administrador\n(Acceso total)" #LightCoral
+
+package "Dashboard" {
+  usecase UC28 as "UC-28: Ver dashboard\n(estadísticas generales)"
+}
+
+package "Productos" {
+  usecase UC29 as "UC-29: Listar productos"
+  usecase UC30 as "UC-30: Crear producto"
+  usecase UC31 as "UC-31: Editar producto"
+  usecase UC32 as "UC-32: Eliminar producto"
+  usecase UC33 as "UC-33: Subir imagen de producto\n(AWS S3)"
+  usecase UC34 as "UC-34: Gestionar stock"
+}
+
+package "Órdenes" {
+  usecase UC35 as "UC-35: Listar todas las órdenes"
+  usecase UC36 as "UC-36: Ver detalle de orden"
+  usecase UC37 as "UC-37: Actualizar estado de orden"
+  usecase UC38 as "UC-38: Cancelar orden (administrador)"
+}
+
+package "Usuarios" {
+  usecase UC39 as "UC-39: Listar usuarios"
+  usecase UC40 as "UC-40: Ver detalle de usuario"
+  usecase UC41 as "UC-41: Cambiar rol de usuario"
+  usecase UC42 as "UC-42: Asignar permisos a usuario"
+  usecase UC43 as "UC-43: Revocar permisos de usuario"
+}
+
+package "Pagos" {
+  usecase UC44 as "UC-44: Ver lista de pagos"
+  usecase UC45 as "UC-45: Ver detalle de pago"
+  usecase UC46 as "UC-46: Ver ingresos y estadísticas"
+}
+
+package "Auditoría" {
+  usecase UC47 as "UC-47: Ver logs de auditoría"
+  usecase UC48 as "UC-48: Filtrar logs por tipo"
+  usecase UC49 as "UC-49: Filtrar logs por usuario"
+}
+
+' Relaciones Administrador
+Administrador --> UC28
+Administrador --> UC29
+Administrador --> UC30
+Administrador --> UC31
+Administrador --> UC32
+Administrador --> UC33
+Administrador --> UC34
+Administrador --> UC35
+Administrador --> UC36
+Administrador --> UC37
+Administrador --> UC38
+Administrador --> UC39
+Administrador --> UC40
+Administrador --> UC44
+Administrador --> UC45
+Administrador --> UC46
+Administrador --> UC47
+Administrador --> UC48
+Administrador --> UC49
+
+' Relaciones Super Administrador
+SuperAdmin --> UC28
+SuperAdmin --> UC29
+SuperAdmin --> UC30
+SuperAdmin --> UC31
+SuperAdmin --> UC32
+SuperAdmin --> UC33
+SuperAdmin --> UC34
+SuperAdmin --> UC35
+SuperAdmin --> UC36
+SuperAdmin --> UC37
+SuperAdmin --> UC38
+SuperAdmin --> UC39
+SuperAdmin --> UC40
+SuperAdmin --> UC41
+SuperAdmin --> UC42
+SuperAdmin --> UC43
+SuperAdmin --> UC44
+SuperAdmin --> UC45
+SuperAdmin --> UC46
+SuperAdmin --> UC47
+SuperAdmin --> UC48
+SuperAdmin --> UC49
+
+' Extensiones
+UC30 ..> UC33 : <<include>>
+UC31 ..> UC33 : <<include>>
+UC37 ..> UC36 : <<extend>>
+UC38 ..> UC36 : <<extend>>
+UC42 ..> UC40 : <<extend>>
+UC43 ..> UC40 : <<extend>>
+
+' Notas
+note right of UC28
+  Dashboard muestra:
+  - Total de productos
+  - Total de órdenes
+  - Total de usuarios
+  - Ingresos totales
+  - Estadísticas por período
+end note
+
+note right of UC30
+  Crear producto incluye:
+  - Título, autor, categoría
+  - Precio regular y promocional
+  - Stock inicial
+  - Descripción
+  - Subir imagen (AWS S3)
+end note
+
+note right of UC37
+  Actualizar estado de orden:
+  - Estados: pendiente, en_pago,
+    pagado, en_envio, entregada
+  - Actualiza fecha correspondiente
+  - Registra en auditoría
+end note
+
+note right of UC42
+  Solo el Super Administrador
+  puede asignar permisos.
+  Permisos disponibles:
+  - Dashboard, Productos, Órdenes,
+    Usuarios, Ingresos, Auditoría
+end note
+
+note right of UC43
+  Solo el Super Administrador
+  puede revocar permisos.
+  Los permisos se gestionan
+  desde el detalle de usuario.
+end note
+
+@enduml
+

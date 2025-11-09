@@ -1,0 +1,61 @@
+@startuml Secuencia_LiberarReservas
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Job Automático: Liberar Reservas Expiradas\nMyneBooks Store
+
+participant "Job\nAutomático" as Job #LightPink
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+participant "Sistema de\nCarrito" as Carrito #LightGreen
+
+== Inicio del Job (cada 5 minutos) ==
+Job -> Backend: 1. Ejecutar job\n(expirarReservas)
+note right of Job: Se ejecuta cada 5 minutos\nconfigurado en index.js
+
+Backend -> BD: 2. SELECT ordenes\nWHERE estado='en_pago'\nAND fecha_expiracion < NOW()
+BD -> Backend: 3. Órdenes expiradas
+
+alt No hay órdenes expiradas
+    Backend -> Job: 4a. No hay reservas expiradas
+    Job -> Job: 5a. Finalizar job
+else Hay órdenes expiradas
+    loop Para cada orden expirada
+        Backend -> BD: 4b. SELECT items de orden\nWHERE id_orden = ?
+        BD -> Backend: 5b. Items de la orden
+        
+        Backend -> BD: 6b. BEGIN TRANSACTION
+        
+        Backend -> BD: 7b. UPDATE productos\nSET stock_reserved = stock_reserved - cantidad\nWHERE id_producto = ?\nAND stock_reserved >= cantidad
+        BD -> Backend: 8b. Stock reservado liberado
+        
+        Backend -> BD: 9b. UPDATE ordenes\nSET estado='pendiente',\nfecha_expiracion=NULL\nWHERE id_orden = ?
+        BD -> Backend: 10b. Orden vuelta a 'pendiente'
+        
+        Backend -> Carrito: 11b. Reactivar carrito del usuario\n(reactivarCarritoDesdeOrden)
+        Carrito -> BD: 12b. UPDATE carrito\nSET activo=true\nWHERE usuario_id = ?\nAND producto_id IN (items de orden)
+        BD -> Carrito: 13b. Carrito reactivado
+        Carrito -> Backend: 14b. Carrito reactivado
+        
+        Backend -> BD: 15b. INSERT INTO auditoria\n(tipo='reserva_expirada', usuario=?)
+        BD -> Backend: 16b. Registrado
+        
+        Backend -> BD: 17b. COMMIT TRANSACTION
+    end
+    
+    Backend -> Job: 18b. Reservas liberadas\n(contador de órdenes procesadas)
+    Job -> Job: 19b. Finalizar job
+end
+
+note right of Job
+  El job se ejecuta:
+  - Inmediatamente al iniciar el servidor
+  - Cada 5 minutos (configurable)
+  - Procesa todas las órdenes expiradas
+  - Libera stock y reactiva carritos
+end note
+
+@enduml
+

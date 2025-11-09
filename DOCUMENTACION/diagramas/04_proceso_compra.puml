@@ -1,0 +1,83 @@
+@startuml CasosDeUso_ProcesoCompra
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Proceso de Compra\nMyneBooks Store
+
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+actor MercadoPago as "Mercado Pago\n(Sistema externo)" #LightGray
+
+usecase UC16 as "UC-16: Crear orden de compra"
+usecase UC17 as "UC-17: Iniciar proceso de pago\n(reserva stock temporal)"
+usecase UC18 as "UC-18: Completar pago en Mercado Pago"
+usecase UC19 as "UC-19: Guardar carrito para más tarde"
+usecase UC20 as "UC-20: Ver estado de pago"
+
+' Relaciones
+Cliente --> UC16
+Cliente --> UC17
+Cliente --> UC18
+Cliente --> UC19
+Cliente --> UC20
+
+MercadoPago --> UC18
+
+' Inclusiones y extensiones
+UC17 ..> UC16 : <<include>>
+UC18 ..> UC17 : <<include>>
+UC20 ..> UC18 : <<extend>>
+
+' Notas
+note right of UC16
+  Crear orden de compra:
+  - Valida dirección de envío (mínimo 10 caracteres)
+  - Crea orden en estado 'pendiente'
+  - Copia items del carrito a orden_items
+  - NO reserva stock aún
+  - Guarda precio_unitario de cada item
+end note
+
+note right of UC17
+  Iniciar proceso de pago:
+  - Valida stock disponible
+  - Reserva stock por 15 minutos (TTL)
+  - Cambia estado a 'en_pago'
+  - Crea preferencia en Mercado Pago
+  - Redirige a Checkout Pro
+  - Si expira, job automático libera stock
+end note
+
+note right of UC18
+  Completar pago:
+  - Usuario completa pago en Mercado Pago
+  - Mercado Pago procesa el pago
+  - Webhook notifica resultado al backend
+  - Estado: aprobado, rechazado o pendiente
+end note
+
+note right of UC19
+  Guardar para más tarde:
+  - Crea orden en estado 'pendiente'
+  - Vacía carrito
+  - Usuario puede pagar después
+  - Aparece en "Más tarde" en Mis Órdenes
+end note
+
+note right of UC20
+  Ver estado de pago:
+  - Página de éxito (/ordenes/:id/success)
+  - Página de fallo (/ordenes/:id/failure)
+  - Página pendiente (/ordenes/:id/pending)
+  - Muestra detalles del pago
+end note
+
+@enduml
+

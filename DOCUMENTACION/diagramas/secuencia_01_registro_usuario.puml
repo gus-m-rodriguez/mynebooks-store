@@ -1,0 +1,56 @@
+@startuml Secuencia_RegistroUsuario
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Registro de Usuario\nMyneBooks Store
+
+actor Usuario as "Usuario\n(Visitante)" #LightBlue
+participant Frontend as "Frontend\n(React)" #LightGreen
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+participant "Sistema de\nEmail" as Email #LightGray
+
+Usuario -> Frontend: 1. Completa formulario de registro\n(nombre, apellido, email, password)
+Frontend -> Frontend: 2. Validación con React Hook Form
+
+Usuario -> Frontend: 3. Envía formulario
+Frontend -> Backend: 4. POST /api/auth/register\n{nombre, apellido, email, password, direccion_envio}
+
+Backend -> Backend: 5. Validar campos\n(Joi schema)
+alt Campos inválidos
+    Backend -> Frontend: 6a. Error 400: Campos inválidos
+    Frontend -> Usuario: 7a. Mostrar mensaje de error
+else Campos válidos
+    Backend -> BD: 6b. Verificar si email existe\nSELECT email FROM usuarios
+    BD -> Backend: 7b. Resultado
+    
+    alt Email ya existe
+        Backend -> Frontend: 8a. Error 409: Email ya registrado
+        Frontend -> Usuario: 9a. Mostrar mensaje de error
+    else Email disponible
+        Backend -> Backend: 8b. Hash de contraseña\n(bcrypt, 10 rounds)
+        Backend -> BD: 9b. INSERT INTO usuarios\n(nombre, apellido, email, password_hash, rol='cliente')
+        BD -> Backend: 10b. Usuario creado (id_usuario)
+        
+        Backend -> Backend: 11b. Generar JWT token\n(createAccessToken)
+        Backend -> Backend: 12b. Configurar cookie httpOnly
+        
+        Backend -> BD: 13b. INSERT INTO auditoria\n(tipo='usuario_registrado')
+        BD -> Backend: 14b. Registrado
+        
+        Backend -> Email: 15b. Enviar email de bienvenida\n(enviarEmailBienvenida)
+        note right of Email: No bloquea si falla
+        Email -> Backend: 16b. Email enviado (o error silencioso)
+        
+        Backend -> Frontend: 17b. 200 OK\n{id, nombre, apellido, email, rol}
+        note right of Backend: Cookie con JWT enviada\nen headers Set-Cookie
+        
+        Frontend -> Frontend: 18b. Guardar token en contexto\n(AuthContext)
+        Frontend -> Usuario: 19b. Redirigir a /catalogo\nUsuario autenticado
+    end
+end
+
+@enduml
+

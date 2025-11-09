@@ -1,0 +1,76 @@
+@startuml Secuencia_CrearProductoAdmin
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Crear Producto (Administrador)\nMyneBooks Store
+
+actor Admin as "Administrador" #LightYellow
+participant Frontend as "Frontend\n(React)" #LightBlue
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+participant "AWS S3" as S3 #LightGray
+
+Admin -> Frontend: 1. Accede a Panel Admin > Productos
+Frontend -> Backend: 2. GET /api/productos\nCookie: token (JWT)
+Backend -> Frontend: 3. Lista de productos actuales
+
+Admin -> Frontend: 4. Click "Crear Producto"
+Frontend -> Admin: 5. Muestra formulario\n(título, autor, categoría, precio, stock, imagen, etc.)
+
+Admin -> Frontend: 6. Completa formulario y selecciona imagen
+Frontend -> Frontend: 7. Validación con React Hook Form
+
+Admin -> Frontend: 8. Envía formulario
+Frontend -> Backend: 9. POST /api/productos\n{datos del producto}\nCookie: token
+
+Backend -> Backend: 10. Validar JWT token\n(auth.middleware)
+Backend -> Backend: 11. Verificar rol = 'admin' o 'super_admin'\n(admin.middleware)
+Backend -> Backend: 12. Verificar permiso 'Productos'\n(permissions.middleware)
+
+alt Sin permisos
+    Backend -> Frontend: 13a. Error 403: Sin permisos
+    Frontend -> Admin: 14a. Mostrar mensaje de error
+else Con permisos
+    Backend -> Backend: 13b. Validar datos (Joi schema)\n(título, autor, precio, stock, etc.)
+    
+    alt Datos inválidos
+        Backend -> Frontend: 14a. Error 400: Datos inválidos
+        Frontend -> Admin: 15a. Mostrar mensaje de error
+    else Datos válidos
+        alt Hay imagen para subir
+            Frontend -> Backend: 14b. POST /api/upload\nFormData con imagen\nCookie: token
+            Backend -> Backend: 15b. Validar JWT y permisos
+            Backend -> Backend: 16b. Validar archivo\n(tipo, tamaño con multer)
+            
+            alt Archivo inválido
+                Backend -> Frontend: 17a. Error 400: Archivo inválido
+                Frontend -> Admin: 18a. Mostrar mensaje de error
+            else Archivo válido
+                Backend -> Backend: 17b. Generar nombre único\n(uuid + extensión)
+                Backend -> S3: 18b. Subir imagen a S3\n(PutObject)
+                S3 -> Backend: 19b. Imagen subida\n(URL pública)
+                Backend -> Frontend: 20b. 200 OK: {imagen_url}
+                Frontend -> Frontend: 21b. Guardar imagen_url
+            end
+        end
+        
+        Frontend -> Backend: 22b. POST /api/productos\n{datos + imagen_url}\nCookie: token
+        
+        Backend -> Backend: 23b. Validar datos nuevamente
+        Backend -> BD: 24b. INSERT INTO productos\n(titulo, autor, categoria, precio,\nprecio_promocional, stock, imagen_url,\ndescripcion, fecha_creacion)
+        BD -> Backend: 25b. Producto creado (id_producto)
+        
+        Backend -> BD: 26b. INSERT INTO auditoria\n(tipo='producto_creado', usuario=?)
+        BD -> Backend: 27b. Registrado
+        
+        Backend -> Frontend: 28b. 200 OK: Producto creado\n{id_producto, datos del producto}
+        Frontend -> Frontend: 29b. Actualizar lista de productos
+        Frontend -> Admin: 30b. Mostrar mensaje de éxito\n"Producto creado correctamente"
+        Frontend -> Frontend: 31b. Redirigir o actualizar vista
+    end
+end
+
+@enduml
+

@@ -1,0 +1,71 @@
+@startuml Secuencia_AgregarCarrito
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Agregar Producto al Carrito\nMyneBooks Store
+
+actor Usuario as "Usuario\n(Cliente)" #LightGreen
+participant Frontend as "Frontend\n(React)" #LightBlue
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+
+Usuario -> Frontend: 1. Selecciona producto y cantidad
+Frontend -> Frontend: 2. Validar que usuario está autenticado\n(AuthContext)
+
+Usuario -> Frontend: 3. Click "Agregar al Carrito"
+Frontend -> Backend: 4. POST /api/carrito\n{producto_id, cantidad}\nCookie: token (JWT)
+
+Backend -> Backend: 5. Validar JWT token\n(auth.middleware)
+Backend -> Backend: 6. Extraer usuarioId del token
+
+Backend -> Backend: 7. Validar datos\n(Joi schema)
+alt Datos inválidos
+    Backend -> Frontend: 8a. Error 400: Datos inválidos
+    Frontend -> Usuario: 9a. Mostrar mensaje de error
+else Datos válidos
+    Backend -> BD: 8b. SELECT producto\n(stock, stock_reserved)\nWHERE id_producto = ?
+    BD -> Backend: 9b. Datos del producto
+    
+    alt Producto no existe
+        Backend -> Frontend: 10a. Error 404: Producto no encontrado
+        Frontend -> Usuario: 11a. Mostrar mensaje de error
+    else Producto existe
+        Backend -> Backend: 10b. Calcular stock disponible\n(stock - stock_reserved)
+        
+        alt Stock insuficiente
+            Backend -> Frontend: 11a. Error 400: Stock insuficiente
+            Frontend -> Usuario: 12a. Mostrar mensaje de error
+        else Stock suficiente
+            Backend -> BD: 11b. SELECT carrito\nWHERE usuario_id = ? AND producto_id = ? AND activo = true
+            BD -> Backend: 12b. Resultado
+            
+            alt Producto ya está en carrito
+                Backend -> Backend: 13a. Calcular nueva cantidad\n(cantidad_actual + cantidad_nueva)
+                Backend -> Backend: 14a. Validar stock disponible
+                
+                alt Stock suficiente para nueva cantidad
+                    Backend -> BD: 15a1. UPDATE carrito\nSET cantidad = nueva_cantidad
+                    BD -> Backend: 16a1. Actualizado
+                    Backend -> Frontend: 17a1. 200 OK: Cantidad actualizada
+                    Frontend -> Frontend: 18a1. Actualizar CartContext
+                    Frontend -> Usuario: 19a1. Mostrar mensaje: "Cantidad actualizada"
+                else Stock insuficiente para nueva cantidad
+                    Backend -> Frontend: 15a2. Error 400: Stock insuficiente
+                    Frontend -> Usuario: 16a2. Mostrar mensaje de error
+                end
+            else Producto nuevo en carrito
+                Backend -> BD: 13b. INSERT INTO carrito\n(usuario_id, producto_id, cantidad, activo=true)
+                BD -> Backend: 14b. Item agregado
+                Backend -> Frontend: 15b. 200 OK: Producto agregado
+                Frontend -> Frontend: 16b. Actualizar CartContext
+                Frontend -> Frontend: 17b. Actualizar contador en Navbar
+                Frontend -> Usuario: 18b. Mostrar mensaje: "Producto agregado al carrito"
+            end
+        end
+    end
+end
+
+@enduml
+

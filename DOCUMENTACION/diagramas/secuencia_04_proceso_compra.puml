@@ -1,0 +1,105 @@
+@startuml Secuencia_ProcesoCompra
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Diagrama de Secuencia - Proceso de Compra Completo\nMyneBooks Store
+
+actor Usuario as "Usuario\n(Cliente)" #LightGreen
+participant Frontend as "Frontend\n(React)" #LightBlue
+participant Backend as "Backend API\n(Express)" #LightYellow
+participant "Base de\nDatos" as BD #LightCoral
+participant "Mercado\nPago" as MP #LightGray
+
+== Crear Orden ==
+Usuario -> Frontend: 1. Completa checkout\n(dirección de envío)
+Frontend -> Frontend: 2. Validar dirección (mínimo 10 caracteres)
+
+Usuario -> Frontend: 3. Click "Confirmar y pagar"
+Frontend -> Backend: 4. POST /api/ordenes\n{direccion_envio}\nCookie: token
+
+Backend -> Backend: 5. Validar JWT y extraer usuarioId
+Backend -> BD: 6. SELECT carrito activo\nWHERE usuario_id = ?
+BD -> Backend: 7. Items del carrito
+
+Backend -> BD: 8. BEGIN TRANSACTION
+Backend -> BD: 9. INSERT INTO ordenes\n(estado='pendiente')
+BD -> Backend: 10. Orden creada (id_orden)
+
+Backend -> BD: 11. INSERT INTO orden_items\n(para cada item del carrito)
+BD -> Backend: 12. Items creados
+
+Backend -> BD: 13. UPDATE carrito SET activo=false
+BD -> Backend: 14. Carrito desactivado
+
+Backend -> BD: 15. COMMIT TRANSACTION
+Backend -> Frontend: 16. 200 OK: Orden creada\n{id_orden, estado='pendiente'}
+
+Frontend -> Frontend: 17. Vaciar carrito (CartContext)
+
+== Iniciar Pago ==
+Frontend -> Backend: 18. POST /api/ordenes/:id/iniciar-pago\nCookie: token
+
+Backend -> Backend: 19. Validar JWT y extraer usuarioId
+Backend -> BD: 20. SELECT orden\nWHERE id_orden = ? AND id_usuario = ?
+BD -> Backend: 21. Datos de la orden
+
+alt Orden no encontrada o no pertenece al usuario
+    Backend -> Frontend: 22a. Error 404 o 403
+    Frontend -> Usuario: 23a. Mostrar mensaje de error
+else Orden válida
+    Backend -> Backend: 22b. Verificar estado = 'pendiente'
+    Backend -> BD: 23b. SELECT items de orden\ncon stock disponible
+    BD -> Backend: 24b. Items con stock
+    
+    Backend -> Backend: 25b. Validar stock disponible\npara cada item
+    
+    alt Stock insuficiente
+        Backend -> Frontend: 26a. Error 400: Stock insuficiente
+        Frontend -> Usuario: 27a. Mostrar mensaje de error
+    else Stock suficiente
+        Backend -> Backend: 26b. Calcular fecha_expiracion\n(ahora + 15 minutos)
+        
+        Backend -> BD: 27b. BEGIN TRANSACTION
+        Backend -> BD: 28b. UPDATE productos\nSET stock_reserved += cantidad\nWHERE stock - stock_reserved >= cantidad
+        BD -> Backend: 29b. Stock reservado
+        
+        Backend -> BD: 30b. UPDATE ordenes\nSET estado='en_pago', fecha_expiracion=?
+        BD -> Backend: 31b. Orden actualizada
+        
+        Backend -> BD: 32b. INSERT INTO auditoria\n(tipo='pago_iniciado')
+        BD -> Backend: 33b. Registrado
+        
+        Backend -> BD: 34b. COMMIT TRANSACTION
+        
+        Backend -> Backend: 35b. Preparar items para Mercado Pago
+        Backend -> MP: 36b. Crear preferencia de pago\n(items, back_urls, external_reference)
+        MP -> Backend: 37b. Preferencia creada\n{sandbox_init_point, init_point}
+        
+        Backend -> Frontend: 38b. 200 OK\n{url_pago: sandbox_init_point}
+        Frontend -> Usuario: 39b. Redirigir a Mercado Pago\n(window.location.href)
+        
+        == Pago en Mercado Pago ==
+        Usuario -> MP: 40. Completa pago\n(tarjeta, transferencia, etc.)
+        MP -> MP: 41. Procesar pago
+        
+        alt Pago aprobado
+            MP -> Backend: 42a. Webhook POST /api/pagos/webhook\n{status='approved', payment_id}
+            note right of MP: Ver diagrama de webhook\npara detalles completos
+        else Pago rechazado
+            MP -> Backend: 42b. Webhook\n{status='rejected'}
+        else Pago pendiente
+            MP -> Backend: 42c. Webhook\n{status='pending'}
+        end
+        
+        MP -> Usuario: 43. Redirigir a back_url\n(/ordenes/:id/success|failure|pending)
+        Usuario -> Frontend: 44. Llega a página de resultado
+        Frontend -> Backend: 45. GET /api/ordenes/:id
+        Backend -> Frontend: 46. Datos de orden actualizada
+        Frontend -> Usuario: 47. Mostrar resultado del pago
+    end
+end
+
+@enduml
+

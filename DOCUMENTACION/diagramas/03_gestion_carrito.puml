@@ -1,0 +1,77 @@
+@startuml CasosDeUso_GestionCarrito
+!theme plain
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E86AB
+}
+skinparam actor {
+  BackgroundColor #F4F4F4
+  BorderColor #2E86AB
+}
+
+title Casos de Uso - Gestión de Carrito\nMyneBooks Store
+
+actor Cliente as "Cliente\n(Usuario autenticado)" #LightGreen
+
+usecase UC11 as "UC-11: Agregar producto al carrito"
+usecase UC12 as "UC-12: Modificar cantidad en carrito"
+usecase UC13 as "UC-13: Eliminar producto del carrito"
+usecase UC14 as "UC-14: Vaciar carrito completo"
+usecase UC15 as "UC-15: Ver carrito"
+
+' Relaciones
+Cliente --> UC11
+Cliente --> UC12
+Cliente --> UC13
+Cliente --> UC14
+Cliente --> UC15
+
+' Extensiones
+UC12 ..> UC15 : <<extend>>
+UC13 ..> UC15 : <<extend>>
+
+' Notas
+note right of UC11
+  Agregar producto al carrito:
+  - Valida que haya stock disponible
+  - Verifica stock - stock_reserved >= cantidad
+  - Si el producto ya está, suma cantidad
+  - Persiste en base de datos
+  - Actualiza contador en navbar
+end note
+
+note right of UC12
+  Modificar cantidad:
+  - Selector de cantidad en carrito
+  - Valida stock disponible
+  - Actualiza cantidad en BD
+  - Recalcula totales
+end note
+
+note right of UC13
+  Eliminar producto:
+  - Elimina item del carrito
+  - Actualiza totales
+  - Persiste cambio en BD
+end note
+
+note right of UC14
+  Vaciar carrito:
+  - Elimina todos los items
+  - Confirma acción con usuario
+  - Limpia carrito en BD
+end note
+
+note right of UC15
+  Ver carrito muestra:
+  - Lista de productos
+  - Imagen, título, precio unitario
+  - Cantidad modificable
+  - Subtotal por producto
+  - Total general
+  - Botones de acción
+end note
+
+@enduml
+

@@ -1,0 +1,263 @@
+// TODO: Implementar integración con Mercado Pago
+import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
+import crypto from "crypto";
+import { MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, MP_TEST_PAYER_EMAIL } from "../config.js";
+
+// Validar que el token esté configurado
+if (!MP_ACCESS_TOKEN || MP_ACCESS_TOKEN.trim() === "") {
+  console.error("❌ [MP] MP_ACCESS_TOKEN no está configurado en las variables de entorno");
+  console.error("❌ [MP] Por favor, configura MP_ACCESS_TOKEN en el archivo .env");
+  console.error("❌ [MP] Para sandbox, puedes usar: APP_USR-4620209687524993-090522-954308331bc7a890b41bc3d891cf90af-2675330292");
+}
+
+// Inicializar cliente de Mercado Pago
+const client = new MercadoPagoConfig({
+  accessToken: MP_ACCESS_TOKEN,
+});
+
+export const preference = new Preference(client);
+export const payment = new Payment(client);
+
+export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
+  try {
+    // Validar token antes de continuar
+    if (!MP_ACCESS_TOKEN || MP_ACCESS_TOKEN.trim() === "") {
+      throw new Error("MP_ACCESS_TOKEN no está configurado. Por favor, configura MP_ACCESS_TOKEN en el archivo .env");
+    }
+
+    console.log("[MP] Token configurado:", MP_ACCESS_TOKEN.substring(0, 20) + "...");
+    console.log("[MP] Items recibidos:", JSON.stringify(items, null, 2));
+
+    // Validar y preparar items para Mercado Pago
+    const itemsMP = items.map((item, index) => {
+      const title = String(item.titulo || `Item ${index + 1}`).trim();
+      const unit_price = Number(item.precio);
+      const quantity = Number(item.cantidad);
+      
+      // Validaciones estrictas para Mercado Pago
+      if (!title || title.length === 0) {
+        throw new Error(`Item ${index + 1}: El título no puede estar vacío`);
+      }
+      if (title.length > 256) {
+        throw new Error(`Item ${index + 1}: El título no puede exceder 256 caracteres`);
+      }
+      if (isNaN(unit_price) || unit_price <= 0) {
+        throw new Error(`Item ${index + 1} (${title}): El precio debe ser un número mayor a 0. Valor recibido: ${item.precio}`);
+      }
+      if (isNaN(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
+        throw new Error(`Item ${index + 1} (${title}): La cantidad debe ser un entero mayor a 0. Valor recibido: ${item.cantidad}`);
+      }
+      
+      // Mercado Pago requiere que unit_price sea un número positivo
+      // y quantity sea un entero positivo
+      return {
+        title: title,
+        unit_price: unit_price,
+        quantity: quantity,
+        currency_id: "ARS",
+      };
+    });
+    
+    console.log("[MP] Items validados y preparados:", JSON.stringify(itemsMP, null, 2));
+
+    // Preparar el body de la preferencia
+    const preferenceBody = {
+      items: itemsMP,
+      external_reference: ordenId.toString(),
+    };
+
+    // Configurar back_urls y payer
+    const isDevelopment = process.env.NODE_ENV !== "production";
+    const origin = process.env.ORIGIN || "http://localhost:5173";
+    const isLocalhost = origin.includes("localhost") || origin.includes("127.0.0.1");
+    
+    // En modo desarrollo/sandbox, usar comprador de prueba si está configurado
+    if (isDevelopment && MP_TEST_PAYER_EMAIL && MP_TEST_PAYER_EMAIL.trim() !== "") {
+      preferenceBody.payer = {
+        email: MP_TEST_PAYER_EMAIL.trim(),
+      };
+      console.log("[MP] Usando comprador de prueba:", MP_TEST_PAYER_EMAIL);
+    }
+
+    // Configurar back_urls siempre que estén definidas
+    // IMPORTANTE: back_urls debe estar definido ANTES de auto_return
+    if (backUrls && backUrls.success) {
+      preferenceBody.back_urls = {
+        success: backUrls.success,
+        failure: backUrls.failure || backUrls.success,
+        pending: backUrls.pending || backUrls.success,
+      };
+      console.log("[MP] back_urls configuradas:", preferenceBody.back_urls);
+      
+      // Solo agregar auto_return si NO es localhost
+      // Mercado Pago rechaza auto_return con URLs localhost
+      if (!isLocalhost) {
+        preferenceBody.auto_return = "approved";
+        console.log("[MP] auto_return configurado: approved (no es localhost)");
+      } else {
+        console.warn("⚠️ [MP] Modo desarrollo con localhost. auto_return omitido (Mercado Pago lo rechaza).");
+        console.warn("⚠️ [MP] El usuario deberá hacer clic en 'Volver al sitio' después del pago.");
+      }
+    } else {
+      console.warn("⚠️ [MP] back_urls no proporcionadas. No se configurarán URLs de retorno.");
+    }
+
+    // Configurar notification_url para recibir webhooks de Mercado Pago
+    // En desarrollo, usar localhost; en producción, usar la URL pública del backend
+    const backendUrl = process.env.BACKEND_URL || process.env.ORIGIN?.replace(/:\d+$/, ":3000") || "http://localhost:3000";
+    const notificationUrl = `${backendUrl}/api/pagos/webhook/mercadopago`;
+    preferenceBody.notification_url = notificationUrl;
+    console.log("[MP] notification_url configurada:", notificationUrl);
+
+    console.log("[MP] Creando preferencia con body:", JSON.stringify(preferenceBody, null, 2));
+
+    const result = await preference.create({
+      body: preferenceBody,
+    });
+
+    console.log("[MP] Preferencia creada exitosamente:", {
+      id: result.id,
+      init_point: result.init_point,
+      sandbox_init_point: result.sandbox_init_point,
+    });
+
+    return result;
+  } catch (error) {
+    console.error("❌ Error creando preferencia de Mercado Pago:");
+    console.error("   Tipo:", error.constructor.name);
+    console.error("   Mensaje:", error.message);
+    console.error("   Código:", error.code || error.status);
+    console.error("   Status:", error.status);
+    console.error("   Detalles completos:", JSON.stringify(error, null, 2));
+    
+    // Si el error es 403 relacionado con políticas, proporcionar información útil
+    if (error.status === 403 || error.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES") {
+      console.error("\n💡 SOLUCIÓN SUGERIDA:");
+      console.error("   Mercado Pago está rechazando las URLs de redirección.");
+      console.error("   Opciones:");
+      console.error("   1. Usar un servicio como ngrok para crear una URL pública temporal");
+      console.error("   2. Configurar las URLs en el panel de Mercado Pago");
+      console.error("   3. En desarrollo, las back_urls se omiten automáticamente si usas localhost");
+      console.error("   4. Verificar que ORIGIN esté configurado correctamente");
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Obtener información de un pago de Mercado Pago
+ */
+export const obtenerPago = async (paymentId) => {
+  try {
+    const result = await payment.get({ id: paymentId });
+    return result;
+  } catch (error) {
+    console.error("Error obteniendo pago de Mercado Pago:", error);
+    throw error;
+  }
+};
+
+/**
+ * Procesar notificación de webhook de Mercado Pago
+ * @param {Object} data - Datos del webhook
+ * @returns {Object} - Información del pago procesado
+ */
+export const procesarWebhook = async (data) => {
+  try {
+    // Mercado Pago envía diferentes tipos de notificaciones
+    // Tipo "payment" contiene el ID del pago
+    if (data.type === "payment") {
+      const paymentId = data.data?.id;
+      if (!paymentId) {
+        throw new Error("Payment ID no encontrado en webhook");
+      }
+
+      // Obtener información completa del pago
+      const pagoInfo = await obtenerPago(paymentId);
+
+      return {
+        processed: true,
+        payment_id: paymentId,
+        status: pagoInfo.status, // approved, rejected, pending, etc.
+        status_detail: pagoInfo.status_detail,
+        external_reference: pagoInfo.external_reference, // ID de la orden
+        transaction_amount: pagoInfo.transaction_amount,
+      };
+    }
+
+    return { processed: false, reason: "Tipo de notificación no soportado" };
+  } catch (error) {
+    console.error("Error procesando webhook de Mercado Pago:", error);
+    throw error;
+  }
+};
+
+/**
+ * Validar la firma del webhook de Mercado Pago
+ * @param {string} xSignature - Header x-signature de Mercado Pago (formato: "ts=<timestamp>,v1=<hash>")
+ * @param {string} requestBody - Cuerpo de la petición (JSON stringificado)
+ * @returns {boolean} - true si la firma es válida, false en caso contrario
+ */
+export const validarFirmaWebhook = (xSignature, requestBody) => {
+  // Si no hay secret configurado, no validar (modo desarrollo sin secret)
+  if (!MP_WEBHOOK_SECRET || MP_WEBHOOK_SECRET.trim() === "") {
+    console.warn("⚠️ MP_WEBHOOK_SECRET no configurado. Validación de webhook deshabilitada.");
+    return true; // Permitir en desarrollo si no está configurado
+  }
+
+  // Si no hay header x-signature, rechazar
+  if (!xSignature || xSignature.trim() === "") {
+    console.error("❌ Header x-signature no presente en webhook");
+    return false;
+  }
+
+  try {
+    // Extraer timestamp (ts) y firma (v1) del header x-signature
+    // Formato: "ts=<timestamp>,v1=<hash>"
+    const signatureParts = xSignature.split(",");
+    let timestamp = null;
+    let receivedHash = null;
+
+    for (const part of signatureParts) {
+      const [key, value] = part.split("=");
+      if (key.trim() === "ts") {
+        timestamp = value.trim();
+      } else if (key.trim() === "v1") {
+        receivedHash = value.trim();
+      }
+    }
+
+    if (!timestamp || !receivedHash) {
+      console.error("❌ Formato de x-signature inválido:", xSignature);
+      return false;
+    }
+
+    // Concatenar timestamp + body
+    const dataToHash = `${timestamp}.${requestBody}`;
+
+    // Calcular HMAC-SHA256 usando MP_WEBHOOK_SECRET
+    const calculatedHash = crypto
+      .createHmac("sha256", MP_WEBHOOK_SECRET)
+      .update(dataToHash)
+      .digest("hex");
+
+    // Comparar hash calculado con el recibido (comparación segura contra timing attacks)
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(calculatedHash, "hex"),
+      Buffer.from(receivedHash, "hex")
+    );
+
+    if (!isValid) {
+      console.error("❌ Firma de webhook inválida. Posible webhook falso o secret incorrecto.");
+      console.error("   Calculado:", calculatedHash);
+      console.error("   Recibido:", receivedHash);
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error("❌ Error validando firma de webhook:", error);
+    return false;
+  }
+};
+
