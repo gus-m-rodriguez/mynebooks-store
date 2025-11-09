@@ -968,9 +968,11 @@ export const actualizarEstadoOrden = async (req, res) => {
 
 // Verificar estado del pago con Mercado Pago
 // Útil cuando el usuario vuelve de Mercado Pago y el webhook aún no llegó
+// Puede recibir payment_id en el body para verificar pagos que aún no tienen registro en BD
 export const verificarPago = async (req, res) => {
   try {
     const { id } = req.params;
+    const { payment_id } = req.body; // payment_id opcional desde query params de la URL
 
     // Verificar que la orden existe y pertenece al usuario
     const orden = await pool.query(
@@ -992,22 +994,100 @@ export const verificarPago = async (req, res) => {
     }
 
     // Buscar pago asociado a la orden
-    const pago = await pool.query(
+    let pago = await pool.query(
       "SELECT id_pago, mp_id, estado FROM pagos WHERE id_orden = $1 ORDER BY fecha_creacion DESC LIMIT 1",
       [id]
     );
 
-    if (pago.rowCount === 0 || !pago.rows[0].mp_id) {
-      // No hay pago registrado aún, la orden sigue en proceso
+    let pagoActual = null;
+    let mpId = null;
+
+    // Si hay payment_id en el body pero no hay registro de pago, crear uno temporal
+    if (payment_id && (pago.rowCount === 0 || !pago.rows[0].mp_id)) {
+      console.log(`[VerificarPago] No hay registro de pago, pero se recibió payment_id=${payment_id}, creando registro temporal...`);
+      
+      // Verificar que el payment_id corresponde a esta orden consultando Mercado Pago
+      let pagoInfo;
+      try {
+        pagoInfo = await obtenerPago(payment_id);
+      } catch (error) {
+        console.error(`[VerificarPago] Error consultando Mercado Pago con payment_id:`, error);
+        return res.status(400).json({
+          message: "El payment_id proporcionado no es válido o no existe en Mercado Pago",
+          orden_estado: ordenActual.estado,
+        });
+      }
+
+      // Verificar que el external_reference del pago corresponde a esta orden
+      if (pagoInfo.external_reference !== id.toString()) {
+        return res.status(400).json({
+          message: "El payment_id no corresponde a esta orden",
+          orden_estado: ordenActual.estado,
+        });
+      }
+
+      // Crear registro de pago temporal
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        
+        // Verificar si ya existe un pago con este mp_id (idempotencia)
+        const pagoExistente = await client.query(
+          "SELECT id_pago, id_orden, estado FROM pagos WHERE mp_id = $1",
+          [payment_id]
+        );
+
+        if (pagoExistente.rowCount > 0) {
+          // Ya existe, usar ese
+          pagoActual = pagoExistente.rows[0];
+          mpId = payment_id;
+          await client.query("COMMIT");
+        } else {
+          // Crear nuevo registro de pago
+          const totalOrden = await client.query(
+            `SELECT SUM(cantidad * precio_unitario) as total 
+             FROM orden_items 
+             WHERE id_orden = $1`,
+            [id]
+          );
+          const monto = parseFloat(totalOrden.rows[0]?.total || pagoInfo.transaction_amount || 0);
+
+          const nuevoPago = await client.query(
+            `INSERT INTO pagos (id_orden, mp_id, estado, monto, fecha_pago) 
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id_pago, mp_id, estado`,
+            [
+              id,
+              payment_id,
+              pagoInfo.status,
+              monto,
+              pagoInfo.status === "approved" ? new Date() : null,
+            ]
+          );
+
+          pagoActual = nuevoPago.rows[0];
+          mpId = payment_id;
+          await client.query("COMMIT");
+          console.log(`[VerificarPago] Registro de pago creado: id_pago=${pagoActual.id_pago}, mp_id=${mpId}`);
+        }
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else if (pago.rowCount > 0 && pago.rows[0].mp_id) {
+      // Hay registro de pago existente
+      pagoActual = pago.rows[0];
+      mpId = pagoActual.mp_id;
+    } else {
+      // No hay pago registrado y no se proporcionó payment_id
       return res.json({
-        message: "No hay pago registrado para esta orden aún",
+        message: "No hay pago registrado para esta orden aún. Espera a que el webhook procese el pago o proporciona el payment_id.",
         orden_estado: ordenActual.estado,
         actualizado: false,
       });
     }
-
-    const pagoActual = pago.rows[0];
-    const mpId = pagoActual.mp_id;
 
     console.log(`[VerificarPago] Verificando pago mp_id=${mpId} para orden ${id}`);
 

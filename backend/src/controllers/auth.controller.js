@@ -128,7 +128,7 @@ export const signin = async (req, res) => {
 
   res.cookie("token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production", // En producción debe ser true cuando sameSite es "none"
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     path: "/",
     maxAge: 1000 * 60 * 60 * 24, // 1 día

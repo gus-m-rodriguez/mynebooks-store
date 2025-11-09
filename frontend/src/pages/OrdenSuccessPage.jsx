@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ordenesApi } from "../api/ordenes.api.js";
 import { Button, Alert, Loading, Card } from "../components/ui/index.js";
 import { FaCheckCircle, FaShoppingBag } from "react-icons/fa";
@@ -7,6 +7,7 @@ import { FaCheckCircle, FaShoppingBag } from "react-icons/fa";
 const OrdenSuccessPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orden, setOrden] = useState(null);
@@ -15,10 +16,16 @@ const OrdenSuccessPage = () => {
     const verificarOrden = async () => {
       try {
         setLoading(true);
+        // Extraer payment_id de los query params si está disponible
+        const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
+        
         // Primero intentar verificar el pago con Mercado Pago (esto actualiza el estado si el pago fue aprobado)
         try {
           console.log("[OrdenSuccessPage] Verificando pago con Mercado Pago para orden:", id);
-          const verificarRes = await ordenesApi.verificarPago(id);
+          console.log("[OrdenSuccessPage] Payment ID de URL:", paymentId);
+          
+          // Si hay payment_id en la URL, enviarlo al backend
+          const verificarRes = await ordenesApi.verificarPago(id, paymentId ? { payment_id: paymentId } : {});
           console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
         } catch (err) {
           console.error("[OrdenSuccessPage] Error verificando pago:", err);
