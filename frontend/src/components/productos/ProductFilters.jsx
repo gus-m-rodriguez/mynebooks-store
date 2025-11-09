@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo } from "react";
 import { Input, Button } from "../ui/index.js";
 import { FaChevronDown, FaChevronUp } from "react-icons/fa";
+import { productosApi } from "../../api/productos.api.js";
 
 const ProductFilters = memo(({ onFilterChange, onSearch, initialFilters = {} }) => {
   const [filters, setFilters] = useState({
@@ -11,6 +12,10 @@ const ProductFilters = memo(({ onFilterChange, onSearch, initialFilters = {} }) 
     ordenar: initialFilters.ordenar || "titulo_asc",
     search: initialFilters.search || "",
   });
+
+  // Estado para las categorías disponibles
+  const [categorias, setCategorias] = useState([]);
+  const [loadingCategorias, setLoadingCategorias] = useState(true);
 
   // Ref para rastrear si el componente ya se inicializó
   const isInitializedRef = useRef(false);
@@ -25,6 +30,23 @@ const ProductFilters = memo(({ onFilterChange, onSearch, initialFilters = {} }) 
   // Ref para rastrear qué input tenía el foco antes de un re-render
   const focusedFieldRef = useRef(null);
   
+  // Cargar categorías disponibles al montar el componente
+  useEffect(() => {
+    const cargarCategorias = async () => {
+      try {
+        setLoadingCategorias(true);
+        const res = await productosApi.listarCategorias();
+        setCategorias(res.data || []);
+      } catch (error) {
+        console.error("Error cargando categorías:", error);
+        setCategorias([]);
+      } finally {
+        setLoadingCategorias(false);
+      }
+    };
+    cargarCategorias();
+  }, []);
+
   // Sincronizar con initialFilters solo en el montaje inicial
   // No sincronizar después para evitar perder el foco mientras el usuario escribe
   useEffect(() => {
@@ -227,16 +249,36 @@ const ProductFilters = memo(({ onFilterChange, onSearch, initialFilters = {} }) 
             onToggle={() => toggleSection("categoria")}
           >
             <div className="space-y-2">
-              <input
-                ref={categoriaInputRef}
-                type="text"
-                value={filters.categoria}
-                onChange={(e) => handleChange("categoria", e.target.value)}
-                onFocus={() => handleFocus("categoria")}
-                onBlur={handleBlur}
-                placeholder="Ej: Ficción, Ciencia..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-acento-violetaManga focus:border-transparent"
-              />
+              {loadingCategorias ? (
+                <div className="text-sm text-gray-500 py-2">Cargando categorías...</div>
+              ) : categorias.length > 0 ? (
+                <select
+                  ref={categoriaInputRef}
+                  value={filters.categoria}
+                  onChange={(e) => handleChange("categoria", e.target.value)}
+                  onFocus={() => handleFocus("categoria")}
+                  onBlur={handleBlur}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-acento-violetaManga focus:border-transparent"
+                >
+                  <option value="">Todas las categorías</option>
+                  {categorias.map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {categoria}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  ref={categoriaInputRef}
+                  type="text"
+                  value={filters.categoria}
+                  onChange={(e) => handleChange("categoria", e.target.value)}
+                  onFocus={() => handleFocus("categoria")}
+                  onBlur={handleBlur}
+                  placeholder="Ej: Ficción, Ciencia..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-acento-violetaManga focus:border-transparent"
+                />
+              )}
             </div>
           </FilterSection>
 

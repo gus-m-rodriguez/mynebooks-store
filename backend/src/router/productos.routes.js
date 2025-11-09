@@ -6,6 +6,7 @@ import {
   listarNovedades,
   listarPromociones,
   obtenerProductosRelacionados,
+  listarCategorias,
 } from "../controllers/productos.controller.js";
 
 const router = Router();
@@ -15,6 +16,7 @@ router.get("/", listarProductos);
 router.get("/buscar", buscarProductos);
 router.get("/novedades", listarNovedades);
 router.get("/promociones", listarPromociones);
+router.get("/categorias", listarCategorias);
 router.get("/:id", obtenerProducto);
 router.get("/:id/relacionados", obtenerProductosRelacionados);
 

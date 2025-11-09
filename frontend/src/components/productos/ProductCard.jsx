@@ -22,6 +22,7 @@ const ProductCard = ({ producto, showStock = false }) => {
   const precioFinal = tienePromocion ? precioPromocional : precioRegular;
   const stockDisponible = producto.stock_disponible ?? (producto.stock - (producto.stock_reserved || 0));
   const sinStock = stockDisponible <= 0;
+  const esUltimoDisponible = stockDisponible === 1;
 
   const handleAgregarAlCarrito = async (e) => {
     e.preventDefault();
@@ -82,14 +83,24 @@ const ProductCard = ({ producto, showStock = false }) => {
               <span className="text-4xl">📚</span>
             </div>
           )}
-          {tienePromocion && !sinStock && (
-            <div className="absolute top-2 right-2 bg-acento-rojo text-white px-2 py-1 rounded text-xs font-bold">
+          {/* Badges de estado del producto */}
+          {sinStock && (
+            <div className="absolute top-2 right-2 bg-gray-500 text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10">
+              Sin Stock Disponible
+            </div>
+          )}
+          {!sinStock && tienePromocion && (
+            <div className="absolute top-2 right-2 bg-acento-rojo text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10">
               🔥 OFERTA
             </div>
           )}
-          {sinStock && (
-            <div className="absolute top-2 right-2 bg-gray-500 text-white px-2 py-1 rounded text-xs font-bold">
-              Sin Stock Disponible
+          {!sinStock && esUltimoDisponible && (
+            <div 
+              className={`absolute bg-orange-500 text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10 ${
+                tienePromocion ? 'top-10 right-2' : 'top-2 right-2'
+              }`}
+            >
+              ⚠️ ÚLTIMO DISPONIBLE
             </div>
           )}
         </div>

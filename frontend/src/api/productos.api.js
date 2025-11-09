@@ -22,6 +22,9 @@ export const productosApi = {
   // Promociones
   promociones: (limite = 10) => 
     cliente.get("/productos/promociones", { params: { limite } }),
+  
+  // Categorías disponibles
+  listarCategorias: () => cliente.get("/productos/categorias"),
 };
 
 

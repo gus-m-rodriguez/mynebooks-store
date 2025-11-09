@@ -335,3 +335,21 @@ export const listarPromociones = async (req, res) => {
   }
 };
 
+// Obtener todas las categorías únicas disponibles
+export const listarCategorias = async (req, res) => {
+  try {
+    const resultado = await pool.query(
+      `SELECT DISTINCT categoria 
+       FROM productos 
+       WHERE categoria IS NOT NULL AND categoria != ''
+       ORDER BY categoria ASC`
+    );
+
+    const categorias = resultado.rows.map(row => row.categoria);
+    res.json(categorias);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error al obtener categorías" });
+  }
+};
+

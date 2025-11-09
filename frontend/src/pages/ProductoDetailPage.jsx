@@ -123,6 +123,7 @@ const ProductoDetailPage = () => {
   const precioFinal = tienePromocion ? producto.precio_promocional : producto.precio;
   const stockDisponible = producto.stock_disponible ?? (producto.stock - (producto.stock_reserved || 0));
   const sinStock = stockDisponible <= 0;
+  const esUltimoDisponible = stockDisponible === 1;
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -141,7 +142,7 @@ const ProductoDetailPage = () => {
       {/* Detalle del producto */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
         {/* Imagen */}
-        <div className="bg-base-crema rounded-lg overflow-hidden">
+        <div className="bg-base-crema rounded-lg overflow-hidden relative">
           {producto.imagen_url ? (
             <img
               src={producto.imagen_url}
@@ -154,6 +155,26 @@ const ProductoDetailPage = () => {
           ) : (
             <div className="w-full h-96 flex items-center justify-center text-oscuro-azulMarino">
               <span className="text-8xl">📚</span>
+            </div>
+          )}
+          {/* Badges de estado del producto */}
+          {sinStock && (
+            <div className="absolute top-4 right-4 bg-gray-500 text-white px-3 py-2 rounded text-sm font-bold shadow-md z-10">
+              Sin Stock Disponible
+            </div>
+          )}
+          {!sinStock && tienePromocion && (
+            <div className="absolute top-4 right-4 bg-acento-rojo text-white px-3 py-2 rounded text-sm font-bold shadow-md z-10">
+              🔥 OFERTA
+            </div>
+          )}
+          {!sinStock && esUltimoDisponible && (
+            <div 
+              className={`absolute bg-orange-500 text-white px-3 py-2 rounded text-sm font-bold shadow-md z-10 ${
+                tienePromocion ? 'top-16 right-4' : 'top-4 right-4'
+              }`}
+            >
+              ⚠️ ÚLTIMO DISPONIBLE
             </div>
           )}
         </div>
