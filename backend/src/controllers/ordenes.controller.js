@@ -1260,16 +1260,17 @@ export const verificarPago = async (req, res) => {
 export const verificarPagoPublico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_id, status } = req.body;
+    const { payment_id, collection_id, status } = req.body;
 
-    // Validar que se proporcionó payment_id
-    if (!payment_id) {
+    // Validar que se proporcionó al menos uno de los IDs
+    if (!payment_id && !collection_id) {
       return res.status(400).json({
-        message: "payment_id es requerido",
+        message: "payment_id o collection_id es requerido",
       });
     }
 
-    console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id} con payment_id=${payment_id}`);
+    console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id}`);
+    console.log(`[VerificarPagoPublico] payment_id=${payment_id}, collection_id=${collection_id}`);
 
     // Verificar que la orden existe
     const orden = await pool.query(
@@ -1283,22 +1284,50 @@ export const verificarPagoPublico = async (req, res) => {
 
     const ordenActual = orden.rows[0];
 
-    // Verificar payment_id con Mercado Pago y validar que corresponde a esta orden
-    let pagoInfo;
-    try {
-      pagoInfo = await obtenerPago(payment_id);
-    } catch (error) {
-      console.error(`[VerificarPagoPublico] Error consultando Mercado Pago:`, error);
+    // Intentar obtener información del pago
+    let pagoInfo = null;
+    
+    // Estrategia 1: Si tenemos payment_id, intentar obtenerlo directamente
+    if (payment_id) {
+      try {
+        console.log(`[VerificarPagoPublico] Intentando obtener pago con payment_id=${payment_id}`);
+        pagoInfo = await obtenerPago(payment_id);
+        console.log(`[VerificarPagoPublico] Pago obtenido exitosamente con payment_id`);
+      } catch (error) {
+        console.warn(`[VerificarPagoPublico] No se pudo obtener pago con payment_id=${payment_id}:`, error.message);
+        // Continuar con otras estrategias
+      }
+    }
+    
+    // Estrategia 2: Si no funcionó y tenemos collection_id, buscar pagos por external_reference
+    if (!pagoInfo) {
+      try {
+        console.log(`[VerificarPagoPublico] Buscando pagos por external_reference (orden ${id})`);
+        const { buscarPagosPorOrden } = await import("../libs/mercadopago.js");
+        pagoInfo = await buscarPagosPorOrden(id);
+        if (pagoInfo) {
+          console.log(`[VerificarPagoPublico] Pago encontrado por external_reference: ${pagoInfo.id}`);
+        }
+      } catch (error) {
+        console.warn(`[VerificarPagoPublico] No se pudo buscar pagos por orden:`, error.message);
+      }
+    }
+    
+    // Si aún no tenemos pagoInfo, retornar error
+    if (!pagoInfo) {
+      console.error(`[VerificarPagoPublico] No se pudo encontrar el pago para la orden ${id}`);
       return res.status(400).json({
-        message: "El payment_id proporcionado no es válido o no existe en Mercado Pago",
+        message: "No se pudo encontrar el pago en Mercado Pago. El pago puede estar pendiente o el ID proporcionado no es válido.",
         orden_estado: ordenActual.estado,
+        sugerencia: "Espera unos minutos y verifica nuevamente, o espera a que el webhook procese el pago.",
       });
     }
 
     // Validar que el external_reference corresponde a esta orden
     if (pagoInfo.external_reference !== id.toString()) {
+      console.error(`[VerificarPagoPublico] external_reference no coincide: ${pagoInfo.external_reference} !== ${id}`);
       return res.status(400).json({
-        message: "El payment_id no corresponde a esta orden",
+        message: "El pago no corresponde a esta orden",
         orden_estado: ordenActual.estado,
       });
     }

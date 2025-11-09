@@ -16,21 +16,33 @@ const OrdenSuccessPage = () => {
     const verificarOrden = async () => {
       try {
         setLoading(true);
-        // Extraer payment_id de los query params si está disponible
-        const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
+        // Extraer payment_id o collection_id de los query params
+        // En Checkout Pro, Mercado Pago puede enviar collection_id (preferencia) o payment_id (pago)
+        const paymentId = searchParams.get("payment_id");
+        const collectionId = searchParams.get("collection_id");
+        
+        // Log de todos los query params para debugging
+        console.log("[OrdenSuccessPage] Query params completos:", Object.fromEntries(searchParams.entries()));
+        console.log("[OrdenSuccessPage] Payment ID extraído:", paymentId);
+        console.log("[OrdenSuccessPage] Collection ID extraído:", collectionId);
         
         // Primero intentar verificar el pago con Mercado Pago (esto actualiza el estado si el pago fue aprobado)
         // Usar endpoint público que no requiere autenticación
         let pagoVerificado = false;
         let estadoVerificado = null;
         
-        if (paymentId) {
+        // Enviar payment_id o collection_id al backend
+        if (paymentId || collectionId) {
           try {
             console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
-            console.log("[OrdenSuccessPage] Payment ID de URL:", paymentId);
+            
+            // Preparar body con los IDs disponibles
+            const body = {};
+            if (paymentId) body.payment_id = paymentId;
+            if (collectionId) body.collection_id = collectionId;
             
             // Usar endpoint público que no requiere autenticación
-            const verificarRes = await ordenesApi.verificarPagoPublico(id, { payment_id: paymentId });
+            const verificarRes = await ordenesApi.verificarPagoPublico(id, body);
             console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
             
             // Guardar el estado verificado
@@ -56,7 +68,7 @@ const OrdenSuccessPage = () => {
             // Continuar aunque falle la verificación
           }
         } else {
-          console.warn("[OrdenSuccessPage] No se encontró payment_id en la URL");
+          console.warn("[OrdenSuccessPage] No se encontró payment_id ni collection_id en la URL");
         }
         
         // Intentar obtener el estado de la orden (puede fallar si no hay sesión, pero no es crítico)

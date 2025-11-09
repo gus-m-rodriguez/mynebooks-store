@@ -159,6 +159,53 @@ export const obtenerPago = async (paymentId) => {
 };
 
 /**
+ * Buscar pagos por external_reference (ID de orden)
+ * Útil cuando solo tenemos el collection_id (preferencia) y necesitamos encontrar el pago real
+ */
+export const buscarPagosPorOrden = async (ordenId) => {
+  try {
+    // Buscar pagos usando la API de search de Mercado Pago
+    // Nota: La API de Mercado Pago permite buscar pagos por external_reference
+    const searchParams = {
+      external_reference: ordenId.toString(),
+      limit: 10,
+    };
+    
+    // Usar la API REST directamente ya que el SDK puede no tener este método
+    const axios = (await import("axios")).default;
+    const response = await axios.get("https://api.mercadopago.com/v1/payments/search", {
+      params: searchParams,
+      headers: {
+        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      },
+    });
+    
+    if (response.data && response.data.results && response.data.results.length > 0) {
+      // Retornar el pago más reciente
+      return response.data.results[0];
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error buscando pagos por orden:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtener información de una preferencia de Mercado Pago
+ */
+export const obtenerPreferencia = async (preferenceId) => {
+  try {
+    const result = await preference.get({ id: preferenceId });
+    return result;
+  } catch (error) {
+    console.error("Error obteniendo preferencia de Mercado Pago:", error);
+    throw error;
+  }
+};
+
+/**
  * Procesar notificación de webhook de Mercado Pago
  * @param {Object} data - Datos del webhook
  * @returns {Object} - Información del pago procesado
