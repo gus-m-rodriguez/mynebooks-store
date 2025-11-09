@@ -1307,6 +1307,8 @@ export const verificarPagoPublico = async (req, res) => {
     const transactionAmount = pagoInfo.transaction_amount;
 
     console.log(`[VerificarPagoPublico] Estado en MP: ${mpStatus}, Estado actual en BD: ${ordenActual.estado}`);
+    console.log(`[VerificarPagoPublico] Payment ID: ${payment_id}, Orden ID: ${id}`);
+    console.log(`[VerificarPagoPublico] External reference del pago: ${pagoInfo.external_reference}`);
 
     // Verificar si ya existe un pago con este mp_id (idempotencia)
     let pago = await pool.query(
@@ -1475,13 +1477,14 @@ export const verificarPagoPublico = async (req, res) => {
         }
       }
 
-      console.log(`[VerificarPagoPublico] Orden ${id} actualizada: ${ordenActual.estado} -> ${nuevoEstado}`);
+      console.log(`[VerificarPagoPublico] ✅ Orden ${id} actualizada: ${ordenActual.estado} -> ${nuevoEstado}`);
 
       res.json({
         message: "Estado del pago verificado y actualizado",
         orden_estado: nuevoEstado,
         pago_estado: mpStatus,
         actualizado: true,
+        payment_id: payment_id,
       });
     } catch (error) {
       await client.query("ROLLBACK");

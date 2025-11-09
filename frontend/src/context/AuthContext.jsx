@@ -131,16 +131,27 @@ export function AuthProvider({ children }) {
   // Verificar autenticación al cargar
   useEffect(() => {
     const checkAuth = async () => {
-      if (Cookie.get("token")) {
+      const token = Cookie.get("token");
+      if (token) {
         try {
           const res = await authApi.getProfile();
           setUser(res.data);
           setIsAuth(true);
         } catch (error) {
           console.error("Error verificando autenticación:", error);
-          setUser(null);
-          setIsAuth(false);
-          Cookie.remove("token");
+          // Solo limpiar la sesión si es un error 401 (no autorizado)
+          // No limpiar por errores de red temporales
+          if (error.response?.status === 401) {
+            console.log("[AuthContext] Token inválido, limpiando sesión");
+            setUser(null);
+            setIsAuth(false);
+            Cookie.remove("token");
+          } else {
+            // Para otros errores (red, servidor, etc.), mantener el token
+            // pero marcar como no autenticado temporalmente
+            console.warn("[AuthContext] Error temporal verificando autenticación, manteniendo token");
+            setIsAuth(false);
+          }
         }
       }
       setLoading(false);

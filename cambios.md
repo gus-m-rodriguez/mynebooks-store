@@ -409,9 +409,26 @@ const verificarRes = await ordenesApi.verificarPago(id, paymentId ? { payment_id
 
 **DESPUÉS**:
 ```javascript
+let pagoVerificado = false;
+let estadoVerificado = null;
+
 if (paymentId) {
   // Usar endpoint público que no requiere autenticación
   const verificarRes = await ordenesApi.verificarPagoPublico(id, { payment_id: paymentId });
+  estadoVerificado = verificarRes.data?.orden_estado;
+  pagoVerificado = true;
+  
+  // Si el pago fue exitoso, mostrar inmediatamente
+  if (estadoVerificado === "pagado") {
+    setOrden({ estado: "pagado" });
+    // Redirigir después de 5 segundos
+    return;
+  }
+}
+
+// Si no hay sesión pero se verificó el pago, usar ese estado
+if (pagoVerificado && estadoVerificado) {
+  setOrden({ estado: estadoVerificado });
 }
 ```
 
@@ -423,10 +440,110 @@ if (paymentId) {
 verificarPagoPublico: (id, body) => cliente.post(`/ordenes/${id}/verificar-pago-publico`, body),
 ```
 
+**Mejoras adicionales**:
+- Logging completo de query params para debugging
+- Manejo mejorado del estado cuando no hay sesión
+- Si el endpoint público retorna "pagado", se muestra inmediatamente sin esperar obtener la orden
+
 **Explicación**: 
 - Ahora se usa el endpoint público cuando hay `payment_id` en la URL.
 - Esto permite verificar el pago incluso si el usuario no tiene sesión activa.
-- Si no hay sesión, se muestra un mensaje genérico pero positivo.
+- Si el pago fue exitoso, se muestra inmediatamente sin depender de la sesión.
+
+---
+
+### 9. Mejora en AuthContext para Prevenir Pérdida de Sesión
+
+**Archivo**: `frontend/src/context/AuthContext.jsx`
+
+**Ubicación**: Función `checkAuth` en el `useEffect` (línea ~132)
+
+**Problema**: 
+- Si `getProfile()` fallaba por cualquier razón (red, servidor, etc.), se limpiaba la sesión completamente.
+- Esto causaba que el usuario perdiera su sesión al volver de Mercado Pago.
+
+**Cambio**:
+
+**ANTES**:
+```javascript
+useEffect(() => {
+  const checkAuth = async () => {
+    if (Cookie.get("token")) {
+      try {
+        const res = await authApi.getProfile();
+        setUser(res.data);
+        setIsAuth(true);
+      } catch (error) {
+        console.error("Error verificando autenticación:", error);
+        // Limpiaba la sesión por CUALQUIER error
+        setUser(null);
+        setIsAuth(false);
+        Cookie.remove("token");
+      }
+    }
+    setLoading(false);
+  };
+  checkAuth();
+}, []);
+```
+
+**DESPUÉS**:
+```javascript
+useEffect(() => {
+  const checkAuth = async () => {
+    const token = Cookie.get("token");
+    if (token) {
+      try {
+        const res = await authApi.getProfile();
+        setUser(res.data);
+        setIsAuth(true);
+      } catch (error) {
+        console.error("Error verificando autenticación:", error);
+        // Solo limpiar la sesión si es un error 401 (token inválido)
+        if (error.response?.status === 401) {
+          console.log("[AuthContext] Token inválido, limpiando sesión");
+          setUser(null);
+          setIsAuth(false);
+          Cookie.remove("token");
+        } else {
+          // Para otros errores (red, servidor, etc.), mantener el token
+          // pero marcar como no autenticado temporalmente
+          console.warn("[AuthContext] Error temporal verificando autenticación, manteniendo token");
+          setIsAuth(false);
+        }
+      }
+    }
+    setLoading(false);
+  };
+  checkAuth();
+}, []);
+```
+
+**Explicación**: 
+- Solo limpia la sesión si el error es 401 (token inválido o expirado).
+- Para errores de red o del servidor, mantiene el token.
+- Esto evita perder la sesión por problemas temporales al volver de Mercado Pago.
+
+---
+
+### 10. Logging Mejorado en Backend
+
+**Archivo**: `backend/src/controllers/ordenes.controller.js`
+
+**Función**: `verificarPagoPublico`
+
+**Cambios**:
+- Se agregaron logs adicionales para debugging:
+  ```javascript
+  console.log(`[VerificarPagoPublico] Payment ID: ${payment_id}, Orden ID: ${id}`);
+  console.log(`[VerificarPagoPublico] External reference del pago: ${pagoInfo.external_reference}`);
+  console.log(`[VerificarPagoPublico] ✅ Orden ${id} actualizada: ${ordenActual.estado} -> ${nuevoEstado}`);
+  ```
+- Se incluye `payment_id` en la respuesta JSON para verificación.
+
+**Explicación**: 
+- Facilita el debugging en producción.
+- Permite verificar que el endpoint se está ejecutando correctamente.
 
 ---
 
@@ -443,28 +560,38 @@ verificarPagoPublico: (id, body) => cliente.post(`/ordenes/${id}/verificar-pago-
 
 3. **Usuario llega a la página de success**:
    - `OrdenSuccessPage` extrae el `payment_id` de la URL.
-   - Llama a `verificarPago` con el `payment_id`.
+   - Llama a `verificarPagoPublico` (endpoint público) con el `payment_id`.
    - El backend:
-     - Si no hay registro de pago, crea uno temporal con el `payment_id`.
-     - Verifica el estado del pago con Mercado Pago.
-     - Actualiza el estado de la orden a "pagado" si el pago fue aprobado.
-     - Descuenta stock y libera reserva.
+     - Valida el `payment_id` con Mercado Pago.
+     - Verifica que corresponde a la orden (mediante `external_reference`).
+     - Crea o actualiza el registro de pago en la tabla `pagos`.
+     - Actualiza el estado de la orden según el resultado:
+       - `approved` → `"pagado"` (descuenta stock y libera reserva)
+       - `rejected` → `"rechazado"` (solo libera reserva)
+       - `cancelled` → `"cancelada_mp"` (solo libera reserva)
+       - `pending`/`in_process` → `"en_pago"` (no cambia stock)
+     - Actualiza el registro en la tabla `pagos` con estado, monto y fecha.
+     - Registra en auditoría.
+     - Envía email de confirmación si el pago fue aprobado.
+   - El frontend muestra el estado correcto inmediatamente, incluso sin sesión activa.
 
 4. **Webhook de Mercado Pago** (puede llegar antes o después):
    - Si llega después, el webhook verifica que el pago ya fue procesado (idempotencia).
    - Si llega antes, la verificación manual detecta que ya está actualizado.
+   - Ambos métodos son idempotentes y seguros.
 
 ---
 
 ## Archivos Modificados
 
 1. `frontend/package.json` - Agregado flag `-s` al comando start
-2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico`
+2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado
 3. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
-4. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` de URL + uso de endpoint público
+4. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` de URL + uso de endpoint público + mejor manejo de estados
 5. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
 6. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
-7. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
+7. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales
+8. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
 
 ---
 
@@ -493,6 +620,30 @@ verificarPagoPublico: (id, body) => cliente.post(`/ordenes/${id}/verificar-pago-
 - El sistema ahora tiene **doble verificación**: tanto el redirect del usuario como el webhook pueden actualizar el estado del pago.
 - Se implementó **idempotencia**: si el webhook llega después de la verificación manual, no se procesa dos veces.
 - Las cookies están configuradas para funcionar correctamente en producción con dominios diferentes (frontend y backend en Railway).
+- **AuthContext mejorado**: Ya no pierde la sesión por errores temporales de red o servidor, solo por tokens inválidos (401).
+- **Endpoint público seguro**: La seguridad se basa en validar el `payment_id` con Mercado Pago antes de procesar, no en autenticación del usuario.
+
+## Estados que Actualiza el Endpoint Público
+
+El endpoint `verificarPagoPublico` actualiza:
+
+1. **Estado de la orden** (`ordenes.estado`):
+   - `approved` → `"pagado"`
+   - `rejected` → `"rechazado"`
+   - `cancelled` → `"cancelada_mp"`
+   - `pending`/`in_process` → `"en_pago"`
+
+2. **Registro de pago** (`pagos`):
+   - `estado`: Estado de Mercado Pago
+   - `monto`: Monto de la transacción
+   - `fecha_pago`: Fecha actual si es `approved`, `NULL` en otros casos
+
+3. **Stock de productos**:
+   - Si `approved`: Descuenta `stock` y libera `stock_reserved`
+   - Si `rejected`/`cancelled`: Solo libera `stock_reserved`
+   - Si `pending`/`in_process`: No cambia stock
+
+4. **Auditoría**: Registra el evento en la tabla `auditoria`
 
 ---
 
