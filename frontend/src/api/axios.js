@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_BACKEND || "http://localhost:3000/api";
+const baseURL =
+  import.meta.env.MODE === "production"
+    ? import.meta.env.VITE_BACKEND_PROD
+    : import.meta.env.VITE_BACKEND;
 
 const cliente = axios.create({
   baseURL: baseURL,
