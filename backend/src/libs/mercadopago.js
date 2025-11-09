@@ -104,17 +104,26 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
 
     // Configurar notification_url para recibir webhooks de Mercado Pago
     // IMPORTANTE: notification_url debe apuntar al BACKEND, no al frontend
-    // En Railway, usar BACKEND_URL si está configurado, sino construir desde variables de entorno
+    // En Railway, usar BACKEND_URL si está configurado y es una URL válida, sino construir desde variables de entorno
     let backendUrl;
-    if (process.env.BACKEND_URL) {
+    
+    // Validar que BACKEND_URL sea una URL válida (debe empezar con http:// o https://)
+    if (process.env.BACKEND_URL && (process.env.BACKEND_URL.startsWith("http://") || process.env.BACKEND_URL.startsWith("https://"))) {
       backendUrl = process.env.BACKEND_URL;
+      console.log("[MP] ✅ Usando BACKEND_URL de variables de entorno:", backendUrl);
     } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
       // Railway proporciona RAILWAY_PUBLIC_DOMAIN para el servicio actual
       backendUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+      console.log("[MP] ✅ Usando RAILWAY_PUBLIC_DOMAIN:", backendUrl);
     } else {
       // Fallback: intentar construir desde ORIGIN (pero esto puede ser el frontend)
-      console.warn("⚠️ [MP] BACKEND_URL no configurado. Usando fallback que puede ser incorrecto.");
+      console.warn("⚠️ [MP] BACKEND_URL no configurado o no es una URL válida.");
+      if (process.env.BACKEND_URL) {
+        console.warn(`⚠️ [MP] BACKEND_URL tiene un valor inválido: "${process.env.BACKEND_URL}"`);
+        console.warn("⚠️ [MP] BACKEND_URL debe ser una URL completa (ej: https://back-mynebooks-store-production.up.railway.app)");
+      }
       backendUrl = process.env.ORIGIN?.replace(/:\d+$/, ":3000") || "http://localhost:3000";
+      console.warn("⚠️ [MP] Usando fallback que puede ser incorrecto:", backendUrl);
     }
     
     const notificationUrl = `${backendUrl}/api/pagos/webhook/mercadopago`;
