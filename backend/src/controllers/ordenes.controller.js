@@ -1277,13 +1277,24 @@ const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, payment
     try {
       await client.query("BEGIN");
 
-      const totalOrden = await client.query(
-        `SELECT SUM(cantidad * precio_unitario) as total 
-         FROM orden_items 
-         WHERE id_orden = $1`,
-        [id]
-      );
-      const monto = parseFloat(totalOrden.rows[0]?.total || transactionAmount || 0);
+      // Calcular monto desde la orden si transactionAmount es null
+      let monto = null;
+      if (transactionAmount != null && transactionAmount !== undefined) {
+        monto = parseFloat(transactionAmount);
+      } else {
+        const totalOrden = await client.query(
+          `SELECT SUM(cantidad * precio_unitario) as total 
+           FROM orden_items 
+           WHERE id_orden = $1`,
+          [id]
+        );
+        monto = parseFloat(totalOrden.rows[0]?.total || 0);
+      }
+      
+      // Asegurar que monto nunca sea null, NaN o undefined
+      if (!monto || isNaN(monto)) {
+        monto = 0;
+      }
 
       const nuevoPago = await client.query(
         `INSERT INTO pagos (id_orden, mp_id, estado, monto, fecha_pago) 
@@ -1377,6 +1388,18 @@ const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, payment
 
     await client.query("COMMIT");
     console.log(`[procesarPagoAprobado] ✅ Orden ${id} actualizada a "pagado" exitosamente`);
+
+    // Enviar email de confirmación si la orden cambió a "pagado"
+    if (ordenActual.estado !== "pagado") {
+      try {
+        const { enviarEmailConfirmacionOrdenPagada } = await import("../utils/email.js");
+        await enviarEmailConfirmacionOrdenPagada(pool, id, ordenActual.id_usuario);
+        console.log(`[procesarPagoAprobado] ✅ Email de confirmación enviado para orden ${id}`);
+      } catch (emailError) {
+        console.error("[procesarPagoAprobado] Error enviando email de confirmación:", emailError);
+        // No fallar el proceso si el email falla
+      }
+    }
 
     return res.json({
       message: "Pago verificado y orden actualizada exitosamente",

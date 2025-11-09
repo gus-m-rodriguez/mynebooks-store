@@ -84,6 +84,7 @@ const OrdenSuccessPage = () => {
         }
         
         // Intentar obtener el estado de la orden (puede fallar si no hay sesión, pero no es crítico)
+        // IMPORTANTE: No limpiar la sesión si falla, solo usar el estado verificado del pago
         try {
           const res = await ordenesApi.obtener(id);
           const ordenData = res.data;
@@ -97,7 +98,14 @@ const OrdenSuccessPage = () => {
             }, 5000);
           }
         } catch (err) {
-          console.warn("[OrdenSuccessPage] No se pudo obtener la orden (puede ser por falta de sesión):", err);
+          // Si es un error 401, no es crítico - el usuario puede no tener sesión activa
+          // pero el pago ya fue procesado por verificarPagoPublico
+          if (err.response?.status === 401) {
+            console.warn("[OrdenSuccessPage] No hay sesión activa (401), pero el pago ya fue procesado");
+          } else {
+            console.warn("[OrdenSuccessPage] Error obteniendo orden:", err);
+          }
+          
           // Si no hay sesión pero se verificó el pago exitosamente, usar ese estado
           if (pagoVerificado && estadoVerificado) {
             setOrden({ estado: estadoVerificado });
@@ -106,7 +114,7 @@ const OrdenSuccessPage = () => {
                 navigate("/catalogo");
               }, 5000);
             }
-          } else if (paymentId) {
+          } else if (paymentId || collectionId || merchantOrderId) {
             // Si hay payment_id pero no se pudo verificar, asumir que está pendiente
             // (el webhook lo procesará más tarde)
             setOrden({ estado: "en_pago" });
