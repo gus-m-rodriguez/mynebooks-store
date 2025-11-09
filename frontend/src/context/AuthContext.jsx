@@ -128,13 +128,60 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Función para verificar autenticación de forma diferida
+  // Se llama cuando se necesita verificar la sesión (ej: al acceder a rutas protegidas)
+  const verifyAuth = async (force = false) => {
+    const token = Cookie.get("token");
+    
+    if (!token) {
+      setUser(null);
+      setIsAuth(false);
+      return false;
+    }
+
+    // Si ya tenemos usuario y no es forzado, no verificar de nuevo
+    if (user && !force) {
+      return true;
+    }
+
+    try {
+      const res = await authApi.getProfile();
+      setUser(res.data);
+      setIsAuth(true);
+      console.log("[AuthContext] ✅ Sesión verificada exitosamente (diferida)");
+      return true;
+    } catch (error) {
+      console.error("[AuthContext] Error verificando autenticación (diferida):", error);
+      console.error("[AuthContext] Detalles del error:", {
+        status: error.response?.status,
+        message: error.message,
+        code: error.code,
+      });
+      
+      // Si es un error 401, el token es inválido - limpiar sesión
+      if (error.response?.status === 401) {
+        console.log("[AuthContext] ❌ Token inválido (401), limpiando sesión");
+        setUser(null);
+        setIsAuth(false);
+        Cookie.remove("token");
+        return false;
+      }
+      
+      // Para otros errores (red, servidor, etc.), mantener el token pero marcar como no autenticado
+      // Esto permite que se reintente más tarde
+      console.warn("[AuthContext] ⚠️ Error temporal verificando autenticación");
+      setIsAuth(false);
+      return false;
+    }
+  };
+
   // Verificar autenticación al cargar
   useEffect(() => {
     const checkAuth = async () => {
       const token = Cookie.get("token");
       
       // Verificar si estamos en una ruta pública de pago
-      // En estas rutas, no debemos limpiar la sesión aunque haya errores
+      // En estas rutas, NO verificamos la sesión automáticamente (verificación diferida)
       const currentPath = window.location.pathname;
       const isPublicPaymentRoute = 
         currentPath.includes('/ordenes/') && 
@@ -143,61 +190,58 @@ export function AuthProvider({ children }) {
          currentPath.includes('/pending'));
       
       if (token) {
-        // Si hay token, asumir que la sesión es válida inicialmente
-        // Esto evita redirecciones innecesarias al login
+        // Si hay token, establecer isAuth como true inicialmente
+        // Esto permite que el usuario navegue sin ser redirigido inmediatamente
         setIsAuth(true);
         
-        try {
-          const res = await authApi.getProfile();
-          setUser(res.data);
-          setIsAuth(true);
-          console.log("[AuthContext] ✅ Sesión verificada exitosamente");
-        } catch (error) {
-          console.error("[AuthContext] Error verificando autenticación:", error);
-          console.error("[AuthContext] Detalles del error:", {
-            status: error.response?.status,
-            message: error.message,
-            code: error.code,
-            isPublicPaymentRoute,
-          });
-          
-          // Si estamos en una ruta pública de pago, NO limpiar la sesión
-          // incluso si hay un 401, porque el usuario puede no tener sesión activa
-          // pero el pago ya fue procesado
-          if (isPublicPaymentRoute) {
-            console.log("[AuthContext] ⚠️ Ruta pública de pago detectada. Manteniendo sesión aunque haya error.");
-            console.log("[AuthContext] El token seguirá en las cookies para permitir acceso después del pago.");
-            // Mantener isAuth como true para evitar redirecciones innecesarias
+        // SOLO verificar la sesión si NO estamos en una ruta pública de pago
+        // En rutas públicas de pago, la verificación se hará cuando se intente acceder a contenido protegido
+        if (!isPublicPaymentRoute) {
+          try {
+            const res = await authApi.getProfile();
+            setUser(res.data);
             setIsAuth(true);
-            return; // Salir temprano, no limpiar nada
+            console.log("[AuthContext] ✅ Sesión verificada exitosamente");
+          } catch (error) {
+            console.error("[AuthContext] Error verificando autenticación:", error);
+            console.error("[AuthContext] Detalles del error:", {
+              status: error.response?.status,
+              message: error.message,
+              code: error.code,
+            });
+            
+            // Solo limpiar la sesión si es un error 401 (no autorizado)
+            // No limpiar por errores de red temporales o otros errores
+            if (error.response?.status === 401) {
+              console.log("[AuthContext] ❌ Token inválido (401), limpiando sesión");
+              setUser(null);
+              setIsAuth(false);
+              Cookie.remove("token");
+            } else {
+              // Para otros errores (red, servidor, etc.), mantener el token y el estado
+              // Esto evita que el usuario sea redirigido al login por errores temporales
+              console.warn("[AuthContext] ⚠️ Error temporal verificando autenticación, manteniendo sesión");
+              console.warn("[AuthContext] El token sigue en las cookies, la sesión se mantendrá");
+              // Mantener isAuth como true para evitar redirecciones innecesarias
+              // El token está en las cookies, así que asumimos que la sesión es válida
+              // Intentar verificar nuevamente después de un breve delay
+              setTimeout(async () => {
+                try {
+                  const retryRes = await authApi.getProfile();
+                  setUser(retryRes.data);
+                  setIsAuth(true);
+                  console.log("[AuthContext] ✅ Sesión verificada exitosamente en reintento");
+                } catch (retryError) {
+                  console.warn("[AuthContext] ⚠️ Reintento falló, pero manteniendo sesión");
+                }
+              }, 2000);
+            }
           }
-          
-          // Solo limpiar la sesión si es un error 401 (no autorizado)
-          // No limpiar por errores de red temporales o otros errores
-          if (error.response?.status === 401) {
-            console.log("[AuthContext] ❌ Token inválido (401), limpiando sesión");
-            setUser(null);
-            setIsAuth(false);
-            Cookie.remove("token");
-          } else {
-            // Para otros errores (red, servidor, etc.), mantener el token y el estado
-            // Esto evita que el usuario sea redirigido al login por errores temporales
-            console.warn("[AuthContext] ⚠️ Error temporal verificando autenticación, manteniendo sesión");
-            console.warn("[AuthContext] El token sigue en las cookies, la sesión se mantendrá");
-            // Mantener isAuth como true para evitar redirecciones innecesarias
-            // El token está en las cookies, así que asumimos que la sesión es válida
-            // Intentar verificar nuevamente después de un breve delay
-            setTimeout(async () => {
-              try {
-                const retryRes = await authApi.getProfile();
-                setUser(retryRes.data);
-                setIsAuth(true);
-                console.log("[AuthContext] ✅ Sesión verificada exitosamente en reintento");
-              } catch (retryError) {
-                console.warn("[AuthContext] ⚠️ Reintento falló, pero manteniendo sesión");
-              }
-            }, 2000);
-          }
+        } else {
+          // En rutas públicas de pago, no verificar automáticamente
+          // La verificación se hará cuando se intente acceder a contenido protegido
+          console.log("[AuthContext] ⚠️ Ruta pública de pago detectada. Verificación diferida.");
+          console.log("[AuthContext] La sesión se verificará cuando se acceda a contenido protegido.");
         }
       } else {
         console.log("[AuthContext] No hay token en las cookies");
@@ -208,6 +252,7 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, []);
 
+  // Exponer verifyAuth en el contexto
   return (
     <authContext.Provider
       value={{
@@ -219,6 +264,7 @@ export function AuthProvider({ children }) {
         signin,
         signout,
         updateProfile,
+        verifyAuth, // Nueva función para verificación diferida
         setUser,
         setErrors,
       }}
