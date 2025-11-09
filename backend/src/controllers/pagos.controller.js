@@ -20,10 +20,17 @@ export const webhookMercadoPago = async (req, res) => {
   try {
     // Obtener header x-signature para validación
     const xSignature = req.headers["x-signature"] || req.headers["x-signature"] || "";
-    const requestBody = JSON.stringify(req.body);
+    
+    // IMPORTANTE: Usar el body raw capturado en el middleware
+    // Esto asegura que el body sea exactamente el mismo que Mercado Pago envió
+    // (sin cambios en el orden de propiedades o formato)
+    const requestBodyRaw = req.rawBody || JSON.stringify(req.body);
+    
+    // Usar el body parseado para procesarlo
+    const data = req.body;
 
-    // Validar firma del webhook antes de procesar
-    const firmaValida = validarFirmaWebhook(xSignature, requestBody);
+    // Validar firma del webhook antes de procesar (usar el body raw)
+    const firmaValida = validarFirmaWebhook(xSignature, requestBodyRaw);
     
     if (!firmaValida) {
       console.error("❌ Webhook rechazado: Firma inválida");
@@ -39,8 +46,6 @@ export const webhookMercadoPago = async (req, res) => {
         error: "unauthorized"
       });
     }
-
-    const data = req.body;
 
     console.log("📥 Webhook recibido de Mercado Pago (firma válida):", JSON.stringify(data, null, 2));
 

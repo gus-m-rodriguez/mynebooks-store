@@ -29,7 +29,32 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json());
+
+// Middleware para capturar body raw del webhook antes de parsearlo
+// Esto es necesario para validar la firma de Mercado Pago correctamente
+app.use((req, res, next) => {
+  if (req.path === "/api/pagos/webhook/mercadopago") {
+    // Para el webhook, capturar el body raw
+    let data = "";
+    req.on("data", (chunk) => {
+      data += chunk.toString();
+    });
+    req.on("end", () => {
+      req.rawBody = data;
+      // Parsear el JSON para que req.body esté disponible
+      try {
+        req.body = JSON.parse(data);
+      } catch (e) {
+        req.body = {};
+      }
+      next();
+    });
+  } else {
+    // Para todas las demás rutas, usar JSON parser normal
+    express.json()(req, res, next);
+  }
+});
+
 app.use(express.urlencoded({ extended: false }));
 
 // Logging (solo en desarrollo)
