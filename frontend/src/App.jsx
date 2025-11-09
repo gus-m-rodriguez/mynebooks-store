@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Navbar from './components/layout/Navbar.jsx'
 import Footer from './components/layout/Footer.jsx'
+import myneblueImage from './assets/myneblue.png'
 
 // Páginas públicas
 import HomePage from './pages/HomePage.jsx'
@@ -36,10 +37,23 @@ function App() {
   const { isAuth } = useAuth()
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-grow flex flex-col">
-        <Routes>
+    <div className="min-h-screen flex flex-col relative">
+      {/* Fondo de marca de agua */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none opacity-10"
+        style={{
+          backgroundImage: `url(${myneblueImage})`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: 'auto',
+          backgroundPosition: 'center',
+        }}
+      />
+      
+      {/* Contenido principal con z-index para estar sobre el fondo */}
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow flex flex-col">
+          <Routes>
           {/* Rutas públicas - Accesibles para todos */}
             <Route path="/" element={<HomePage />} />
             <Route path="/productos" element={<ProductosPage />} />
@@ -84,9 +98,10 @@ function App() {
 
           {/* 404 */}
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </main>
-      <Footer />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
     </div>
   )
 }
