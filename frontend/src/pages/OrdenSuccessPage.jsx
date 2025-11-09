@@ -13,6 +13,10 @@ const OrdenSuccessPage = () => {
   const [orden, setOrden] = useState(null);
 
   useEffect(() => {
+    // Marcar que venimos de una ruta pública de pago
+    // Esto permite que AuthContext use reintentos más agresivos
+    sessionStorage.setItem('cameFromPaymentRoute', 'true');
+    
     const verificarOrden = async () => {
       try {
         setLoading(true);
