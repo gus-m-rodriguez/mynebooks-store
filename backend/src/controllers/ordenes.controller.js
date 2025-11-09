@@ -1287,8 +1287,17 @@ export const verificarPagoPublico = async (req, res) => {
     // Intentar obtener información del pago
     let pagoInfo = null;
     
-    // Estrategia 1: Si tenemos payment_id, intentar obtenerlo directamente
-    if (payment_id) {
+    // IMPORTANTE: Si payment_id y collection_id son iguales, probablemente es el ID de la preferencia
+    // En este caso, debemos buscar el pago por external_reference directamente
+    const esPreferencia = payment_id && collection_id && payment_id === collection_id;
+    
+    if (esPreferencia) {
+      console.log(`[VerificarPagoPublico] ⚠️ payment_id y collection_id son iguales (${payment_id}). Probablemente es el ID de la preferencia, no del pago.`);
+      console.log(`[VerificarPagoPublico] Buscando pago directamente por external_reference...`);
+    }
+    
+    // Estrategia 1: Si tenemos payment_id y NO es una preferencia, intentar obtenerlo directamente
+    if (payment_id && !esPreferencia) {
       try {
         console.log(`[VerificarPagoPublico] Intentando obtener pago con payment_id=${payment_id}`);
         pagoInfo = await obtenerPago(payment_id);
@@ -1310,7 +1319,7 @@ export const verificarPagoPublico = async (req, res) => {
       }
     }
     
-    // Estrategia 2: Si no funcionó, buscar pagos por external_reference (ID de orden)
+    // Estrategia 2: Si no funcionó o es una preferencia, buscar pagos por external_reference (ID de orden)
     if (!pagoInfo) {
       try {
         console.log(`[VerificarPagoPublico] 🔍 Buscando pagos por external_reference (orden ${id})`);

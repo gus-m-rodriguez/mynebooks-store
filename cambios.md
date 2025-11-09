@@ -710,6 +710,218 @@ if (paymentId || collectionId) {
 
 ---
 
+### 12. Mejoras de Logging en Backend para Debugging
+
+**Problema Identificado**:
+- Los logs no eran suficientemente detallados para diagnosticar problemas con pagos.
+- Cuando ocurría un error "Payment not found" (404), no se tenía suficiente información para entender por qué.
+
+**Archivo**: `backend/src/libs/mercadopago.js`
+
+**Función modificada**: `obtenerPago` (líneas ~151-167)
+
+**Cambios**:
+```javascript
+// ANTES:
+export const obtenerPago = async (paymentId) => {
+  try {
+    const result = await payment.get({ id: paymentId });
+    return result;
+  } catch (error) {
+    console.error("Error obteniendo pago de Mercado Pago:", error);
+    throw error;
+  }
+};
+
+// DESPUÉS:
+export const obtenerPago = async (paymentId) => {
+  try {
+    console.log(`[obtenerPago] Consultando pago con ID: ${paymentId}`);
+    const result = await payment.get({ id: paymentId });
+    console.log(`[obtenerPago] ✅ Pago obtenido exitosamente: ID=${result.id}, Estado=${result.status}`);
+    return result;
+  } catch (error) {
+    console.error("[obtenerPago] ❌ Error obteniendo pago de Mercado Pago:", {
+      paymentId,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      cause: error.cause,
+    });
+    throw error;
+  }
+};
+```
+
+**Función modificada**: `buscarPagosPorOrden` (líneas ~165-207)
+
+**Cambios**:
+```javascript
+// Se agregaron logs detallados:
+console.log(`[buscarPagosPorOrden] Buscando pagos para orden ${ordenId} con parámetros:`, searchParams);
+console.log(`[buscarPagosPorOrden] Respuesta de Mercado Pago:`, {
+  total: response.data?.paging?.total || 0,
+  results_count: response.data?.results?.length || 0,
+});
+console.log(`[buscarPagosPorOrden] ✅ Pago encontrado: ID=${pagoMasReciente.id}, Estado=${pagoMasReciente.status}`);
+// O
+console.log(`[buscarPagosPorOrden] ⚠️ No se encontraron pagos para la orden ${ordenId}`);
+```
+
+**Archivo**: `backend/src/controllers/ordenes.controller.js`
+
+**Función modificada**: `verificarPagoPublico` (líneas ~1290-1348)
+
+**Cambios principales**:
+- Logs más detallados en cada paso del proceso
+- Detección específica del error 404 (Payment not found) con código 2000
+- Información detallada en los errores retornados al frontend
+
+**ANTES**:
+```javascript
+try {
+  pagoInfo = await obtenerPago(payment_id);
+} catch (error) {
+  console.warn(`No se pudo obtener pago con payment_id=${payment_id}:`, error.message);
+}
+```
+
+**DESPUÉS**:
+```javascript
+try {
+  console.log(`[VerificarPagoPublico] Intentando obtener pago con payment_id=${payment_id}`);
+  pagoInfo = await obtenerPago(payment_id);
+  console.log(`[VerificarPagoPublico] ✅ Pago obtenido exitosamente con payment_id=${payment_id}`);
+  console.log(`[VerificarPagoPublico] Estado del pago: ${pagoInfo.status}, External reference: ${pagoInfo.external_reference}`);
+} catch (error) {
+  console.warn(`[VerificarPagoPublico] ⚠️ No se pudo obtener pago con payment_id=${payment_id}`);
+  console.warn(`[VerificarPagoPublico] Error detallado:`, {
+    message: error.message,
+    status: error.status,
+    code: error.code,
+    cause: error.cause,
+  });
+  // Si el error es 404 (Payment not found), el payment_id puede ser inválido o ser un collection_id
+  if (error.status === 404 || error.cause?.code === 2000) {
+    console.log(`[VerificarPagoPublico] El payment_id ${payment_id} no existe en Mercado Pago. Puede ser un collection_id (preferencia).`);
+  }
+}
+```
+
+**Explicación**: 
+- Los logs ahora proporcionan información detallada sobre cada paso del proceso de verificación.
+- Facilita el debugging en producción cuando ocurren errores.
+- Permite identificar rápidamente si el problema es un `payment_id` inválido, un `collection_id`, o un pago que aún no existe.
+
+---
+
+### 13. Mejora Final en AuthContext para Prevenir Pérdida de Sesión
+
+**Problema Identificado**:
+- Aunque se había mejorado el `AuthContext` para no limpiar la sesión por errores temporales, el usuario seguía siendo redirigido al login.
+- El problema era que `isAuth` se establecía como `false` antes de verificar la sesión, causando redirecciones innecesarias.
+
+**Archivo**: `frontend/src/context/AuthContext.jsx`
+
+**Función modificada**: `checkAuth` en el `useEffect` (líneas ~132-187)
+
+**Cambios principales**:
+
+**ANTES**:
+```javascript
+useEffect(() => {
+  const checkAuth = async () => {
+    const token = Cookie.get("token");
+    if (token) {
+      try {
+        const res = await authApi.getProfile();
+        setUser(res.data);
+        setIsAuth(true);
+      } catch (error) {
+        if (error.response?.status === 401) {
+          // Limpiar sesión
+        } else {
+          // Mantener token pero marcar como no autenticado
+          setIsAuth(false); // ← Esto causaba redirecciones
+        }
+      }
+    }
+    setLoading(false);
+  };
+  checkAuth();
+}, []);
+```
+
+**DESPUÉS**:
+```javascript
+useEffect(() => {
+  const checkAuth = async () => {
+    const token = Cookie.get("token");
+    if (token) {
+      // Si hay token, asumir que la sesión es válida inicialmente
+      // Esto evita redirecciones innecesarias al login
+      setIsAuth(true); // ← Establecer inmediatamente
+      
+      try {
+        const res = await authApi.getProfile();
+        setUser(res.data);
+        setIsAuth(true);
+        console.log("[AuthContext] ✅ Sesión verificada exitosamente");
+      } catch (error) {
+        console.error("[AuthContext] Error verificando autenticación:", error);
+        console.error("[AuthContext] Detalles del error:", {
+          status: error.response?.status,
+          message: error.message,
+          code: error.code,
+        });
+        
+        // Solo limpiar la sesión si es un error 401 (no autorizado)
+        if (error.response?.status === 401) {
+          console.log("[AuthContext] ❌ Token inválido (401), limpiando sesión");
+          setUser(null);
+          setIsAuth(false);
+          Cookie.remove("token");
+        } else {
+          // Para otros errores (red, servidor, etc.), mantener el token y el estado
+          console.warn("[AuthContext] ⚠️ Error temporal verificando autenticación, manteniendo sesión");
+          console.warn("[AuthContext] El token sigue en las cookies, la sesión se mantendrá");
+          // Mantener isAuth como true para evitar redirecciones innecesarias
+          // Intentar verificar nuevamente después de un breve delay
+          setTimeout(async () => {
+            try {
+              const retryRes = await authApi.getProfile();
+              setUser(retryRes.data);
+              setIsAuth(true);
+              console.log("[AuthContext] ✅ Sesión verificada exitosamente en reintento");
+            } catch (retryError) {
+              console.warn("[AuthContext] ⚠️ Reintento falló, pero manteniendo sesión");
+            }
+          }, 2000);
+        }
+      }
+    } else {
+      console.log("[AuthContext] No hay token en las cookies");
+      setIsAuth(false);
+    }
+    setLoading(false);
+  };
+  checkAuth();
+}, []);
+```
+
+**Explicación**: 
+- **Establecer `isAuth` inmediatamente**: Si hay token en cookies, se establece `isAuth = true` antes de verificar, evitando redirecciones al login mientras se verifica.
+- **Mantener sesión en errores temporales**: Si la verificación falla con un error temporal (no 401), mantiene `isAuth = true` y hace un reintento automático después de 2 segundos.
+- **Solo limpiar en 401**: Solo limpia la sesión si es un error 401 (token inválido o expirado).
+- **Logging mejorado**: Logs más detallados para debugging.
+
+**Beneficios**:
+- El usuario no es redirigido al login cuando vuelve de Mercado Pago, incluso si hay errores temporales de red.
+- La sesión se mantiene mientras el token sea válido.
+- Reintentos automáticos para recuperar la sesión después de errores temporales.
+
+---
+
 ## Flujo Completo Actualizado
 
 1. **Usuario inicia pago**: 
@@ -750,13 +962,13 @@ if (paymentId || collectionId) {
 ## Archivos Modificados
 
 1. `frontend/package.json` - Agregado flag `-s` al comando start
-2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado + manejo de `collection_id`
-3. `backend/src/libs/mercadopago.js` - Agregadas funciones `buscarPagosPorOrden` y `obtenerPreferencia`
+2. `backend/src/controllers/ordenes.controller.js` - Mejorada función `verificarPago` + nueva función `verificarPagoPublico` + logging mejorado + manejo de `collection_id` + detección de errores 404
+3. `backend/src/libs/mercadopago.js` - Agregadas funciones `buscarPagosPorOrden` y `obtenerPreferencia` + logging mejorado en `obtenerPago` y `buscarPagosPorOrden`
 4. `backend/src/router/ordenes.routes.js` - Agregada ruta pública `verificar-pago-publico`
 5. `frontend/src/pages/OrdenSuccessPage.jsx` - Extracción de `payment_id` y `collection_id` de URL + uso de endpoint público + mejor manejo de estados + logging mejorado
 6. `frontend/src/api/ordenes.api.js` - Agregada función `verificarPagoPublico`
 7. `frontend/src/App.jsx` - Rutas de success/failure/pending ahora son públicas
-8. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales
+8. `frontend/src/context/AuthContext.jsx` - Mejora para no perder sesión por errores temporales + establecer `isAuth` inmediatamente + reintentos automáticos
 9. `backend/src/controllers/auth.controller.js` - Mejorados comentarios en configuración de cookies
 
 ---
@@ -786,9 +998,13 @@ if (paymentId || collectionId) {
 - El sistema ahora tiene **doble verificación**: tanto el redirect del usuario como el webhook pueden actualizar el estado del pago.
 - Se implementó **idempotencia**: si el webhook llega después de la verificación manual, no se procesa dos veces.
 - Las cookies están configuradas para funcionar correctamente en producción con dominios diferentes (frontend y backend en Railway).
-- **AuthContext mejorado**: Ya no pierde la sesión por errores temporales de red o servidor, solo por tokens inválidos (401).
+- **AuthContext mejorado**: 
+  - Ya no pierde la sesión por errores temporales de red o servidor, solo por tokens inválidos (401).
+  - Establece `isAuth = true` inmediatamente si hay token en cookies, evitando redirecciones al login.
+  - Reintentos automáticos después de 2 segundos si la verificación falla temporalmente.
 - **Endpoint público seguro**: La seguridad se basa en validar el `payment_id` con Mercado Pago antes de procesar, no en autenticación del usuario.
 - **Manejo de collection_id**: El sistema ahora maneja tanto `payment_id` como `collection_id`, y busca pagos por `external_reference` si el `payment_id` no es válido o no está disponible.
+- **Logging mejorado**: Logs detallados en todo el flujo de verificación de pagos para facilitar el debugging en producción.
 
 ## Estados que Actualiza el Endpoint Público
 

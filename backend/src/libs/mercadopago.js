@@ -103,11 +103,24 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
     }
 
     // Configurar notification_url para recibir webhooks de Mercado Pago
-    // En desarrollo, usar localhost; en producción, usar la URL pública del backend
-    const backendUrl = process.env.BACKEND_URL || process.env.ORIGIN?.replace(/:\d+$/, ":3000") || "http://localhost:3000";
+    // IMPORTANTE: notification_url debe apuntar al BACKEND, no al frontend
+    // En Railway, usar BACKEND_URL si está configurado, sino construir desde variables de entorno
+    let backendUrl;
+    if (process.env.BACKEND_URL) {
+      backendUrl = process.env.BACKEND_URL;
+    } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      // Railway proporciona RAILWAY_PUBLIC_DOMAIN para el servicio actual
+      backendUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    } else {
+      // Fallback: intentar construir desde ORIGIN (pero esto puede ser el frontend)
+      console.warn("⚠️ [MP] BACKEND_URL no configurado. Usando fallback que puede ser incorrecto.");
+      backendUrl = process.env.ORIGIN?.replace(/:\d+$/, ":3000") || "http://localhost:3000";
+    }
+    
     const notificationUrl = `${backendUrl}/api/pagos/webhook/mercadopago`;
     preferenceBody.notification_url = notificationUrl;
     console.log("[MP] notification_url configurada:", notificationUrl);
+    console.log("[MP] BACKEND_URL usado:", backendUrl);
 
     console.log("[MP] Creando preferencia con body:", JSON.stringify(preferenceBody, null, 2));
 
