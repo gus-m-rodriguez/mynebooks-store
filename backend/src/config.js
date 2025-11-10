@@ -7,11 +7,11 @@ export const PORT = process.env.PORT || 3000;
 // CONFIGURACIÓN DE BASE DE DATOS (PostgreSQL)
 // ============================================
 // Acepta variables de Railway y las tuyas
-export const PG_HOST = process.env.PGHOST || process.env.PG_HOST || "localhost";
-export const PG_PORT = Number(process.env.PGPORT || process.env.PG_PORT || 5432);
-export const PG_USER = process.env.PGUSER || process.env.PG_USER || "postgres";
-export const PG_PASSWORD = process.env.PGPASSWORD || process.env.PG_PASSWORD || "admin";
-export const PG_DATABASE = process.env.PGDATABASE || process.env.PG_DATABASE || "mynebooks";
+export const PG_HOST = process.env.PGHOST || process.env.PG_HOST;
+export const PG_PORT = Number(process.env.PGPORT || process.env.PG_PORT;
+export const PG_USER = process.env.PGUSER || process.env.PG_USER;
+export const PG_PASSWORD = process.env.PGPASSWORD || process.env.PG_PASSWORD;
+export const PG_DATABASE = process.env.PGDATABASE || process.env.PG_DATABASE;
 
 // ⬇️ ESTA LÍNEA ES CLAVE (faltaba en el deploy)
 // URL de conexión completa (para Railway, Heroku, etc.)
