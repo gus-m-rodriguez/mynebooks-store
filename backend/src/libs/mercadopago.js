@@ -7,7 +7,7 @@ import { MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, MP_TEST_PAYER_EMAIL, MP_SANDBOX } f
 if (!MP_ACCESS_TOKEN || MP_ACCESS_TOKEN.trim() === "") {
   console.error("❌ [MP] MP_ACCESS_TOKEN no está configurado en las variables de entorno");
   console.error("❌ [MP] Por favor, configura MP_ACCESS_TOKEN en el archivo .env");
-  console.error("❌ [MP] Para sandbox, puedes usar: el token de prueba de mp");
+  console.error("❌ [MP] Para sandbox, puedes usar: un token de una cuenta tester de MP developer");
 }
 
 // Inicializar cliente de Mercado Pago

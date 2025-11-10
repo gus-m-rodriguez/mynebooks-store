@@ -7,9 +7,9 @@ export const PORT = process.env.PORT || 3000;
 // CONFIGURACIÓN DE BASE DE DATOS (PostgreSQL)
 // ============================================
 // Acepta variables de Railway y las tuyas
-export const PG_HOST = process.env.PGHOST || process.env.PG_HOST;
+export const PG_HOST = process.env.PGHOST || process.env.PG_HOST || "localhost";
 export const PG_PORT = Number(process.env.PGPORT || process.env.PG_PORT);
-export const PG_USER = process.env.PGUSER || process.env.PG_USER;
+export const PG_USER = process.env.PGUSER || process.env.PG_USER || "postgres";
 export const PG_PASSWORD = process.env.PGPASSWORD || process.env.PG_PASSWORD;
 export const PG_DATABASE = process.env.PGDATABASE || process.env.PG_DATABASE;
 
@@ -44,7 +44,7 @@ export const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL || "";
 // CONFIGURACIÓN DE EMAIL (Gmail OAuth2)
 // ============================================
 // Email desde el cual se envían los correos
-export const EMAIL_FROM = process.env.EMAIL_FROM;
+export const EMAIL_FROM = process.env.EMAIL_FROM || "";
 
 // OAuth2 para Gmail (requerido - Gmail no acepta "aplicaciones menos seguras")
 export const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID || "";
@@ -74,7 +74,7 @@ export const BLOQUEO_TTL_MINUTOS = Number(process.env.BLOQUEO_TTL_MINUTOS || 15)
 // ============================================
 export const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || "";
 export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || "";
-export const AWS_REGION = process.env.AWS_REGION || "us-east-2";
-export const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET || "mynebooks-portadas";
-export const AWS_S3_BASE_URL = process.env.AWS_S3_BASE_URL || "https://mynebooks-portadas.s3.us-east-2.amazonaws.com";
+export const AWS_REGION = process.env.AWS_REGION || "";
+export const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET || "";
+export const AWS_S3_BASE_URL = process.env.AWS_S3_BASE_URL || "";
 
