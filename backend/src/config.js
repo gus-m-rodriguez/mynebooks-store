@@ -44,7 +44,7 @@ export const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL || "";
 // CONFIGURACIÓN DE EMAIL (Gmail OAuth2)
 // ============================================
 // Email desde el cual se envían los correos
-export const EMAIL_FROM = process.env.EMAIL_FROM || "mangabooksmyne@gmail.com";
+export const EMAIL_FROM = process.env.EMAIL_FROM;
 
 // OAuth2 para Gmail (requerido - Gmail no acepta "aplicaciones menos seguras")
 export const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID || "";
