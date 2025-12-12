@@ -20,71 +20,71 @@ const OrdenSuccessPage = () => {
     const verificarOrden = async () => {
       try {
         setLoading(true);
-        // Extraer payment_id, collection_id y merchant_order_id de los query params
+        // Extraer payment_id, collection_id, merchant_order_id y preference_id de los query params
         // En Checkout Pro, Mercado Pago puede enviar collection_id (preferencia), payment_id (pago) o merchant_order_id (orden comercial)
         const paymentId = searchParams.get("payment_id");
         const collectionId = searchParams.get("collection_id");
         const merchantOrderId = searchParams.get("merchant_order_id");
+        const preferenceId = searchParams.get("preference_id");
         
         // Log de todos los query params para debugging
         console.log("[OrdenSuccessPage] Query params completos:", Object.fromEntries(searchParams.entries()));
         console.log("[OrdenSuccessPage] Payment ID extraído:", paymentId);
         console.log("[OrdenSuccessPage] Collection ID extraído:", collectionId);
         console.log("[OrdenSuccessPage] Merchant Order ID extraído:", merchantOrderId);
+        console.log("[OrdenSuccessPage] Preference ID extraído:", preferenceId);
         
         // Primero intentar verificar el pago con Mercado Pago (esto actualiza el estado si el pago fue aprobado)
         // Usar endpoint público que no requiere autenticación
+        // IMPORTANTE: Siempre enviar los parámetros al backend, incluso si son null, para que el backend pueda manejar el caso
         let pagoVerificado = false;
         let estadoVerificado = null;
         
-        // Enviar payment_id, collection_id, merchant_order_id y status al backend
-        if (paymentId || collectionId || merchantOrderId) {
-          try {
-            console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
-            
-            // Preparar body con los IDs disponibles y el status
-            const body = {};
-            if (paymentId) body.payment_id = paymentId;
-            if (collectionId) body.collection_id = collectionId;
-            if (merchantOrderId) body.merchant_order_id = merchantOrderId;
-            
-            // IMPORTANTE: Enviar también el status de la URL
-            // Mercado Pago ya nos está diciendo el estado del pago en los parámetros
-            const status = searchParams.get("status");
-            const collectionStatus = searchParams.get("collection_status");
-            if (status) body.status = status;
-            if (collectionStatus) body.collection_status = collectionStatus;
-            
-            console.log("[OrdenSuccessPage] Status recibido en URL:", { status, collectionStatus });
-            
-            // Usar endpoint público que no requiere autenticación
-            const verificarRes = await ordenesApi.verificarPagoPublico(id, body);
-            console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
-            
-            // Guardar el estado verificado
-            estadoVerificado = verificarRes.data?.orden_estado;
-            pagoVerificado = true;
-            
-            // Si la verificación fue exitosa y el estado es "pagado", usar ese estado
-            if (estadoVerificado === "pagado") {
-              setOrden({ estado: "pagado" });
-              setTimeout(() => {
-                navigate("/catalogo");
-              }, 5000);
-              setLoading(false);
-              return; // Salir temprano si el pago fue exitoso
-            }
-          } catch (err) {
-            console.error("[OrdenSuccessPage] Error verificando pago público:", err);
-            console.error("[OrdenSuccessPage] Detalles del error:", {
-              message: err.message,
-              response: err.response?.data,
-              status: err.response?.status
-            });
-            // Continuar aunque falle la verificación
+        try {
+          console.log("[OrdenSuccessPage] Verificando pago público con Mercado Pago para orden:", id);
+          
+          // Preparar body con los IDs disponibles y el status (incluir nulls para que el backend los detecte)
+          const body = {};
+          if (paymentId) body.payment_id = paymentId;
+          if (collectionId) body.collection_id = collectionId;
+          if (merchantOrderId) body.merchant_order_id = merchantOrderId;
+          if (preferenceId) body.preference_id = preferenceId;
+          
+          // IMPORTANTE: Enviar también el status de la URL
+          // Mercado Pago ya nos está diciendo el estado del pago en los parámetros
+          const status = searchParams.get("status");
+          const collectionStatus = searchParams.get("collection_status");
+          if (status) body.status = status;
+          if (collectionStatus) body.collection_status = collectionStatus;
+          
+          console.log("[OrdenSuccessPage] Status recibido en URL:", { status, collectionStatus });
+          console.log("[OrdenSuccessPage] Body enviado al backend:", body);
+          
+          // Usar endpoint público que no requiere autenticación
+          const verificarRes = await ordenesApi.verificarPagoPublico(id, body);
+          console.log("[OrdenSuccessPage] Resultado de verificación:", verificarRes.data);
+          
+          // Guardar el estado verificado
+          estadoVerificado = verificarRes.data?.orden_estado;
+          pagoVerificado = true;
+          
+          // Si la verificación fue exitosa y el estado es "pagado", usar ese estado
+          if (estadoVerificado === "pagado") {
+            setOrden({ estado: "pagado" });
+            setTimeout(() => {
+              navigate("/catalogo");
+            }, 5000);
+            setLoading(false);
+            return; // Salir temprano si el pago fue exitoso
           }
-        } else {
-          console.warn("[OrdenSuccessPage] No se encontró payment_id ni collection_id en la URL");
+        } catch (err) {
+          console.error("[OrdenSuccessPage] Error verificando pago público:", err);
+          console.error("[OrdenSuccessPage] Detalles del error:", {
+            message: err.message,
+            response: err.response?.data,
+            status: err.response?.status
+          });
+          // Continuar aunque falle la verificación
         }
         
         // Intentar obtener el estado de la orden (puede fallar si no hay sesión, pero no es crítico)

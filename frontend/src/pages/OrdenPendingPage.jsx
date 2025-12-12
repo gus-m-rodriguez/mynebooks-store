@@ -25,25 +25,27 @@ const OrdenPendingPage = () => {
         const paymentId = searchParams.get("payment_id");
         const collectionId = searchParams.get("collection_id");
         const merchantOrderId = searchParams.get("merchant_order_id");
+        const preferenceId = searchParams.get("preference_id");
         const status = searchParams.get("status");
         const collectionStatus = searchParams.get("collection_status");
         
-        // Si hay parámetros de MP, usar endpoint público (no requiere autenticación)
-        if (paymentId || collectionId || merchantOrderId) {
-          try {
-            console.log("[OrdenPendingPage] Verificando pago público con Mercado Pago para orden:", id);
-            
-            const body = {};
-            if (paymentId) body.payment_id = paymentId;
-            if (collectionId) body.collection_id = collectionId;
-            if (merchantOrderId) body.merchant_order_id = merchantOrderId;
-            if (status) body.status = status;
-            if (collectionStatus) body.collection_status = collectionStatus;
-            
-            await ordenesApi.verificarPagoPublico(id, body);
-          } catch (err) {
-            console.error("[OrdenPendingPage] Error verificando pago público:", err);
-          }
+        // IMPORTANTE: Siempre enviar los parámetros al backend, incluso si son null, para que el backend pueda manejar el caso
+        try {
+          console.log("[OrdenPendingPage] Verificando pago público con Mercado Pago para orden:", id);
+          
+          const body = {};
+          if (paymentId) body.payment_id = paymentId;
+          if (collectionId) body.collection_id = collectionId;
+          if (merchantOrderId) body.merchant_order_id = merchantOrderId;
+          if (preferenceId) body.preference_id = preferenceId;
+          if (status) body.status = status;
+          if (collectionStatus) body.collection_status = collectionStatus;
+          
+          console.log("[OrdenPendingPage] Body enviado al backend:", body);
+          
+          await ordenesApi.verificarPagoPublico(id, body);
+        } catch (err) {
+          console.error("[OrdenPendingPage] Error verificando pago público:", err);
         }
         
         // Intentar obtener el estado de la orden

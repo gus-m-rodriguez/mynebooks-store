@@ -1422,18 +1422,11 @@ const procesarPagoAprobado = async (req, res, id, ordenActual, pagoInfo, payment
 export const verificarPagoPublico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_id, collection_id, merchant_order_id, status, collection_status } = req.body;
-
-    // Validar que se proporcionó al menos uno de los IDs
-    if (!payment_id && !collection_id && !merchant_order_id) {
-      return res.status(400).json({
-        message: "payment_id, collection_id o merchant_order_id es requerido",
-      });
-    }
+    const { payment_id, collection_id, merchant_order_id, status, collection_status, preference_id } = req.body;
 
     console.log(`[VerificarPagoPublico] Verificando pago público para orden ${id}`);
     console.log(`[VerificarPagoPublico] payment_id=${payment_id}, collection_id=${collection_id}, merchant_order_id=${merchant_order_id}`);
-    console.log(`[VerificarPagoPublico] status=${status}, collection_status=${collection_status}`);
+    console.log(`[VerificarPagoPublico] status=${status}, collection_status=${collection_status}, preference_id=${preference_id}`);
 
     // Verificar que la orden existe
     const orden = await pool.query(
@@ -1447,17 +1440,75 @@ export const verificarPagoPublico = async (req, res) => {
 
     const ordenActual = orden.rows[0];
 
+    // Validar que los IDs no sean null/undefined/string vacío antes de usarlos
+    const paymentIdValido = payment_id && payment_id !== "null" && payment_id !== "undefined" && payment_id.trim() !== "";
+    const merchantOrderIdValido = merchant_order_id && merchant_order_id !== "null" && merchant_order_id !== "undefined" && merchant_order_id.trim() !== "";
+    const collectionIdValido = collection_id && collection_id !== "null" && collection_id !== "undefined" && collection_id.trim() !== "";
+
+    // Si todos los IDs son null/inválidos, Mercado Pago no generó un pago
+    if (!paymentIdValido && !merchantOrderIdValido && !collectionIdValido) {
+      console.log(`[VerificarPagoPublico] ⚠️ MP no generó payment_id - Todos los IDs recibidos son null/inválidos`);
+      console.log(`[VerificarPagoPublico] payment_id=${payment_id}, merchant_order_id=${merchant_order_id}, collection_id=${collection_id}`);
+      console.log(`[VerificarPagoPublico] status=${status}, collection_status=${collection_status}`);
+      
+      // Marcar la orden como "error" (equivalente a "failed_mp_no_payment" pero usando estado existente)
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Actualizar estado de la orden a "error"
+        await client.query(
+          "UPDATE ordenes SET estado = 'error' WHERE id_orden = $1",
+          [id]
+        );
+
+        // Registrar en auditoría con información del preference_id si está disponible
+        const tipoAuditoria = preference_id 
+          ? `pago_fallido_mp_sin_payment_id_preference_${preference_id}`
+          : `pago_fallido_mp_sin_payment_id`;
+        
+        await client.query(
+          `INSERT INTO auditoria (tipo, usuario, fecha) 
+           VALUES ($1, $2, CURRENT_TIMESTAMP)`,
+          [
+            tipoAuditoria,
+            `usuario_${ordenActual.id_usuario}`,
+          ]
+        );
+
+        await client.query("COMMIT");
+        console.log(`[VerificarPagoPublico] ✅ Orden ${id} marcada como 'error' (MP no generó pago). Preference ID guardado en auditoría: ${preference_id || 'N/A'}`);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        console.error(`[VerificarPagoPublico] ❌ Error actualizando orden a estado 'error':`, error);
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      return res.status(200).json({
+        message: "Mercado Pago no generó un pago. La orden fue marcada como error para revisión.",
+        orden_estado: "error",
+        motivo: "mp_no_genero_pago",
+        payment_id_recibido: payment_id,
+        merchant_order_id_recibido: merchant_order_id,
+        collection_id_recibido: collection_id,
+        preference_id: preference_id || null,
+      });
+    }
+
     // IMPORTANTE: Si tenemos el status en la URL, usarlo directamente
     // Mercado Pago ya nos está diciendo el estado del pago en los parámetros de la URL
     const statusFromUrl = status || collection_status;
     
     // Si el status es "approved", podemos procesar el pago directamente sin buscar en la API
-    if (statusFromUrl === "approved" && (payment_id || collection_id)) {
+    // PERO solo si tenemos un ID válido
+    if (statusFromUrl === "approved" && (paymentIdValido || collectionIdValido)) {
       console.log(`[VerificarPagoPublico] ✅ Status "approved" recibido en URL. Procesando pago directamente...`);
       
       // Intentar obtener información completa del pago para validar y obtener el monto
       let pagoInfo = null;
-      const paymentIdToUse = payment_id || collection_id;
+      const paymentIdToUse = paymentIdValido ? payment_id : collection_id;
       
       try {
         console.log(`[VerificarPagoPublico] Obteniendo detalles del pago ${paymentIdToUse} para validar y obtener monto...`);
@@ -1490,12 +1541,11 @@ export const verificarPagoPublico = async (req, res) => {
     }
 
     // Si no tenemos status "approved" en la URL, buscar el pago en la API
-    // Intentar obtener información del pago
+    // IMPORTANTE: Solo consultar Mercado Pago si tenemos al menos un ID válido
     let pagoInfo = null;
     
-    // Estrategia 1: SIEMPRE intentar obtener el pago con payment_id primero
-    // Aunque sea igual al collection_id, puede ser un ID de pago válido
-    if (payment_id) {
+    // Estrategia 1: Intentar obtener el pago con payment_id (solo si es válido)
+    if (paymentIdValido) {
       try {
         console.log(`[VerificarPagoPublico] Intentando obtener pago directamente con payment_id=${payment_id}`);
         pagoInfo = await obtenerPago(payment_id);
@@ -1515,10 +1565,12 @@ export const verificarPagoPublico = async (req, res) => {
         }
         // Continuar con otras estrategias
       }
+    } else {
+      console.log(`[VerificarPagoPublico] ⚠️ No se consulta MP porque payment_id es null/inválido`);
     }
     
-    // Estrategia 2: Si tenemos merchant_order_id, buscar pagos por merchant_order_id (más confiable)
-    if (!pagoInfo && merchant_order_id) {
+    // Estrategia 2: Si tenemos merchant_order_id válido, buscar pagos por merchant_order_id (más confiable)
+    if (!pagoInfo && merchantOrderIdValido) {
       try {
         console.log(`[VerificarPagoPublico] 🔍 Buscando pagos por merchant_order_id ${merchant_order_id}`);
         const { buscarPagosPorMerchantOrder } = await import("../libs/mercadopago.js");
@@ -1536,9 +1588,12 @@ export const verificarPagoPublico = async (req, res) => {
           code: error.code,
         });
       }
+    } else if (!pagoInfo && !merchantOrderIdValido) {
+      console.log(`[VerificarPagoPublico] ⚠️ No se consulta MP porque merchant_order_id es null/inválido`);
     }
     
     // Estrategia 3: Si no funcionó, buscar pagos por external_reference (ID de orden)
+    // Esta estrategia no requiere IDs de la URL, así que siempre se puede intentar
     if (!pagoInfo) {
       try {
         console.log(`[VerificarPagoPublico] 🔍 Buscando pagos por external_reference (orden ${id})`);
@@ -1562,9 +1617,9 @@ export const verificarPagoPublico = async (req, res) => {
     // Si aún no tenemos pagoInfo, retornar error con información detallada
     if (!pagoInfo) {
       console.error(`[VerificarPagoPublico] ❌ No se pudo encontrar el pago para la orden ${id}`);
-      console.error(`[VerificarPagoPublico] Payment ID recibido: ${payment_id || 'N/A'}`);
-      console.error(`[VerificarPagoPublico] Collection ID recibido: ${collection_id || 'N/A'}`);
-      console.error(`[VerificarPagoPublico] Merchant Order ID recibido: ${merchant_order_id || 'N/A'}`);
+      console.error(`[VerificarPagoPublico] Payment ID recibido: ${payment_id || 'N/A'} (válido: ${paymentIdValido})`);
+      console.error(`[VerificarPagoPublico] Collection ID recibido: ${collection_id || 'N/A'} (válido: ${collectionIdValido})`);
+      console.error(`[VerificarPagoPublico] Merchant Order ID recibido: ${merchant_order_id || 'N/A'} (válido: ${merchantOrderIdValido})`);
       console.error(`[VerificarPagoPublico] Estado actual de la orden: ${ordenActual.estado}`);
       
       return res.status(400).json({
