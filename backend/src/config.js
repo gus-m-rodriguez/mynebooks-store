@@ -31,11 +31,19 @@ export const JWT_SECRET = process.env.JWT_SECRET || "mynebooks_secret_key_change
 // ============================================
 // CONFIGURACIÓN DE MERCADO PAGO
 // ============================================
+// Tokens separados para sandbox y producción
+export const MP_ACCESS_TOKEN_PROD = process.env.MP_ACCESS_TOKEN_PROD || "";
+export const MP_ACCESS_TOKEN_TEST = process.env.MP_ACCESS_TOKEN_TEST || "";
+// Modo de operación: "sandbox" o "prod" (o usar NODE_ENV si MP_MODE no está configurado)
+// Si MP_MODE no está configurado, usar NODE_ENV: "production" = "prod", otros = "sandbox"
+export const MP_MODE = process.env.MP_MODE || (process.env.NODE_ENV === "production" ? "prod" : "sandbox");
+// Mantener compatibilidad con configuración antigua (deprecated)
 export const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || "";
 export const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
 // Indicar si estamos usando sandbox de Mercado Pago (incluso en producción)
 // Útil cuando NODE_ENV=production pero usas sandbox de MP (proyectos académicos)
-export const MP_SANDBOX = process.env.MP_SANDBOX === "true" || process.env.MP_SANDBOX === "1";
+// DEPRECATED: Usar MP_MODE en su lugar
+export const MP_SANDBOX = process.env.MP_SANDBOX === "true" || process.env.MP_SANDBOX === "1" || MP_MODE === "sandbox";
 // Email de comprador de prueba para sandbox (opcional)
 // Si está configurado, todos los pagos usarán este email en modo desarrollo
 export const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL || "";

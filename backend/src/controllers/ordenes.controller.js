@@ -579,8 +579,8 @@ export const iniciarPago = async (req, res) => {
         estado: "en_pago",
         fecha_expiracion: fechaExpiracion,
         preferencia_id: preferenciaMP.id,
-        init_point: preferenciaMP.init_point,
-        sandbox_init_point: preferenciaMP.sandbox_init_point,
+        init_point: preferenciaMP.init_point, // Ya viene con el correcto según MP_MODE
+        mode: preferenciaMP.mode, // Incluir modo para debugging
       });
     } catch (error) {
       await client.query("ROLLBACK");

@@ -1,18 +1,62 @@
 // TODO: Implementar integración con Mercado Pago
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 import crypto from "crypto";
-import { MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, MP_TEST_PAYER_EMAIL, MP_SANDBOX } from "../config.js";
+import { 
+  MP_ACCESS_TOKEN_PROD, 
+  MP_ACCESS_TOKEN_TEST, 
+  MP_MODE,
+  MP_ACCESS_TOKEN, // Mantener para compatibilidad
+  MP_WEBHOOK_SECRET, 
+  MP_TEST_PAYER_EMAIL, 
+  MP_SANDBOX 
+} from "../config.js";
 
-// Validar que el token esté configurado
-if (!MP_ACCESS_TOKEN || MP_ACCESS_TOKEN.trim() === "") {
-  console.error("❌ [MP] MP_ACCESS_TOKEN no está configurado en las variables de entorno");
-  console.error("❌ [MP] Por favor, configura MP_ACCESS_TOKEN en el archivo .env");
-  console.error("❌ [MP] Para sandbox, puedes usar: un token de una cuenta tester de MP developer");
+// Determinar el token a usar según MP_MODE
+let tokenActivo = "";
+if (MP_MODE === "sandbox") {
+  // Prioridad: MP_ACCESS_TOKEN_TEST > MP_ACCESS_TOKEN (compatibilidad)
+  tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
+} else if (MP_MODE === "prod") {
+  // Prioridad: MP_ACCESS_TOKEN_PROD > MP_ACCESS_TOKEN (compatibilidad)
+  tokenActivo = MP_ACCESS_TOKEN_PROD || MP_ACCESS_TOKEN;
+} else {
+  console.error(`❌ [MP] MP_MODE inválido: "${MP_MODE}". Debe ser "sandbox" o "prod".`);
+  console.error(`❌ [MP] Usando modo sandbox por defecto.`);
+  tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
 }
 
-// Inicializar cliente de Mercado Pago
+// Guardrails: Validar que el token coincida con el modo
+if (MP_MODE === "sandbox" && tokenActivo && tokenActivo.startsWith("APP_USR")) {
+  console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=sandbox pero el token empieza con 'APP_USR' (producción)");
+  console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno:");
+  console.error("❌ [MP] - MP_MODE debe ser 'sandbox'");
+  console.error("❌ [MP] - MP_ACCESS_TOKEN_TEST debe empezar con 'TEST-'");
+  throw new Error("Configuración inválida: MP_MODE=sandbox pero token de producción detectado. Verifica MP_ACCESS_TOKEN_TEST.");
+}
+
+if (MP_MODE === "prod" && tokenActivo && tokenActivo.startsWith("TEST-")) {
+  console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=prod pero el token empieza con 'TEST-' (sandbox)");
+  console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno:");
+  console.error("❌ [MP] - MP_MODE debe ser 'prod'");
+  console.error("❌ [MP] - MP_ACCESS_TOKEN_PROD debe empezar con 'APP_USR-'");
+  throw new Error("Configuración inválida: MP_MODE=prod pero token de sandbox detectado. Verifica MP_ACCESS_TOKEN_PROD.");
+}
+
+// Validar que el token esté configurado
+if (!tokenActivo || tokenActivo.trim() === "") {
+  const tokenVar = MP_MODE === "sandbox" ? "MP_ACCESS_TOKEN_TEST" : "MP_ACCESS_TOKEN_PROD";
+  console.error(`❌ [MP] ${tokenVar} no está configurado en las variables de entorno`);
+  console.error(`❌ [MP] Por favor, configura ${tokenVar} en el archivo .env`);
+  console.error(`❌ [MP] Modo actual: ${MP_MODE}`);
+  throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}`);
+}
+
+console.log(`✅ [MP] Modo configurado: ${MP_MODE}`);
+console.log(`✅ [MP] Token activo: ${tokenActivo.substring(0, 20)}... (${tokenActivo.startsWith("TEST-") ? "SANDBOX" : "PRODUCCIÓN"})`);
+
+// Inicializar cliente de Mercado Pago con el token correcto
 const client = new MercadoPagoConfig({
-  accessToken: MP_ACCESS_TOKEN,
+  accessToken: tokenActivo,
 });
 
 export const preference = new Preference(client);
@@ -20,12 +64,14 @@ export const payment = new Payment(client);
 
 export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
   try {
-    // Validar token antes de continuar
-    if (!MP_ACCESS_TOKEN || MP_ACCESS_TOKEN.trim() === "") {
-      throw new Error("MP_ACCESS_TOKEN no está configurado. Por favor, configura MP_ACCESS_TOKEN en el archivo .env");
+    // El token ya fue validado al inicializar el módulo, pero verificamos nuevamente por seguridad
+    if (!tokenActivo || tokenActivo.trim() === "") {
+      const tokenVar = MP_MODE === "sandbox" ? "MP_ACCESS_TOKEN_TEST" : "MP_ACCESS_TOKEN_PROD";
+      throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}`);
     }
 
-    console.log("[MP] Token configurado:", MP_ACCESS_TOKEN.substring(0, 20) + "...");
+    console.log(`[MP] MP_MODE: ${MP_MODE}`);
+    console.log(`[MP] Token activo: ${tokenActivo.substring(0, 20)}... (${tokenActivo.startsWith("TEST-") ? "SANDBOX" : "PRODUCCIÓN"})`);
     console.log("[MP] Items recibidos:", JSON.stringify(items, null, 2));
 
     // Validar y preparar items para Mercado Pago
@@ -132,18 +178,39 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
     console.log("[MP] BACKEND_URL usado:", backendUrl);
 
     console.log("[MP] Creando preferencia con body:", JSON.stringify(preferenceBody, null, 2));
+    console.log(`[MP] MP_MODE: ${MP_MODE}`);
 
     const result = await preference.create({
       body: preferenceBody,
     });
 
+    // Determinar qué init_point devolver según el modo
+    let initPointToReturn = null;
+    let initPointType = "";
+    
+    if (MP_MODE === "sandbox") {
+      initPointToReturn = result.sandbox_init_point || result.init_point;
+      initPointType = result.sandbox_init_point ? "sandbox_init_point" : "init_point (fallback)";
+      console.log(`[MP] ✅ Preferencia creada (SANDBOX): pref_id=${result.id}, usando ${initPointType}`);
+    } else {
+      initPointToReturn = result.init_point;
+      initPointType = "init_point";
+      console.log(`[MP] ✅ Preferencia creada (PRODUCCIÓN): pref_id=${result.id}, usando ${initPointType}`);
+    }
+
     console.log("[MP] Preferencia creada exitosamente:", {
       id: result.id,
-      init_point: result.init_point,
-      sandbox_init_point: result.sandbox_init_point,
+      mode: MP_MODE,
+      init_point_type: initPointType,
+      init_point: initPointToReturn,
     });
 
-    return result;
+    // Devolver solo el init_point correcto según el modo
+    return {
+      id: result.id,
+      init_point: initPointToReturn,
+      mode: MP_MODE,
+    };
   } catch (error) {
     console.error("❌ Error creando preferencia de Mercado Pago:");
     console.error("   Tipo:", error.constructor.name);
@@ -339,19 +406,13 @@ export const procesarWebhook = async (data) => {
  * @returns {boolean} - true si la firma es válida, false en caso contrario
  */
 export const validarFirmaWebhook = (xSignature, xRequestId, query, body) => {
-  // Detectar si estamos en sandbox
-  // IMPORTANTE: NODE_ENV puede ser "production" en Railway pero aún usar sandbox de MP
-  // Por eso usamos una variable de entorno específica MP_SANDBOX o verificamos el token
-  const isSandbox = MP_SANDBOX || (MP_ACCESS_TOKEN && (
-    MP_ACCESS_TOKEN.includes("TEST-") || 
-    // Los tokens de sandbox de MP pueden ser APP_USR- pero en modo test
-    // Si no hay variable MP_SANDBOX, asumimos sandbox si el token no es de producción
-    // (Los tokens de producción suelen tener un formato diferente)
-    MP_ACCESS_TOKEN.startsWith("APP_USR-") && !MP_ACCESS_TOKEN.includes("prod")
-  ));
+  // Detectar si estamos en sandbox usando MP_MODE
+  const isSandbox = MP_MODE === "sandbox";
   
   if (isSandbox) {
-    console.log("🔍 [validarFirmaWebhook] Modo sandbox detectado (MP_SANDBOX o token de test)");
+    console.log(`🔍 [validarFirmaWebhook] Modo sandbox detectado (MP_MODE=${MP_MODE})`);
+  } else {
+    console.log(`🔍 [validarFirmaWebhook] Modo producción detectado (MP_MODE=${MP_MODE})`);
   }
   
   // Si no hay secret configurado, no validar (modo desarrollo sin secret)
