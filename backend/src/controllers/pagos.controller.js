@@ -18,27 +18,24 @@ import { reactivarCarritoDesdeOrden } from "../utils/carrito.js";
  */
 export const webhookMercadoPago = async (req, res) => {
   try {
-    // Obtener header x-signature para validación
+    // Obtener headers necesarios para validación según spec de Mercado Pago
     const xSignature = req.headers["x-signature"] || req.headers["x-signature"] || "";
-    
-    // IMPORTANTE: Usar el body raw capturado en el middleware
-    // Esto asegura que el body sea exactamente el mismo que Mercado Pago envió
-    // (sin cambios en el orden de propiedades o formato)
-    const requestBodyRaw = req.rawBody || JSON.stringify(req.body);
+    const xRequestId = req.headers["x-request-id"] || req.headers["x-request-id"] || "";
     
     // Logging para debugging de firma
-    console.log("[webhookMercadoPago] Debugging firma:", {
-      hasRawBody: !!req.rawBody,
-      rawBodyLength: req.rawBody?.length || 0,
-      rawBodyPreview: req.rawBody?.substring(0, 100) || "N/A",
-      xSignature: xSignature.substring(0, 50) + "...",
+    console.log("[webhookMercadoPago] Headers recibidos:", {
+      xSignature: xSignature ? xSignature.substring(0, 50) + "..." : "N/A",
+      xRequestId: xRequestId || "N/A",
+      query: req.query,
+      body: req.body,
     });
     
     // Usar el body parseado para procesarlo
     const data = req.body;
 
-    // Validar firma del webhook antes de procesar (usar el body raw)
-    const firmaValida = validarFirmaWebhook(xSignature, requestBodyRaw);
+    // Validar firma del webhook antes de procesar (según spec oficial de MP)
+    // NO usar rawBody, usar manifest con id, request-id y ts
+    const firmaValida = validarFirmaWebhook(xSignature, xRequestId, req.query, req.body);
     
     if (!firmaValida) {
       console.error("❌ Webhook rechazado: Firma inválida");

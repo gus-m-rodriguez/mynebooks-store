@@ -331,12 +331,14 @@ export const procesarWebhook = async (data) => {
 };
 
 /**
- * Validar la firma del webhook de Mercado Pago
+ * Validar la firma del webhook de Mercado Pago según la especificación oficial
  * @param {string} xSignature - Header x-signature de Mercado Pago (formato: "ts=<timestamp>,v1=<hash>")
- * @param {string} requestBody - Cuerpo de la petición (JSON stringificado)
+ * @param {string} xRequestId - Header x-request-id de Mercado Pago
+ * @param {object} query - Query parameters de la request (req.query)
+ * @param {object} body - Body parseado de la request (req.body)
  * @returns {boolean} - true si la firma es válida, false en caso contrario
  */
-export const validarFirmaWebhook = (xSignature, requestBody) => {
+export const validarFirmaWebhook = (xSignature, xRequestId, query, body) => {
   // Detectar si estamos en sandbox
   // IMPORTANTE: NODE_ENV puede ser "production" en Railway pero aún usar sandbox de MP
   // Por eso usamos una variable de entorno específica MP_SANDBOX o verificamos el token
@@ -374,7 +376,7 @@ export const validarFirmaWebhook = (xSignature, requestBody) => {
   }
 
   try {
-    // Extraer timestamp (ts) y firma (v1) del header x-signature
+    // Parsear x-signature: extraer timestamp (ts) y firma (v1)
     // Formato: "ts=<timestamp>,v1=<hash>"
     const signatureParts = xSignature.split(",");
     let timestamp = null;
@@ -394,14 +396,57 @@ export const validarFirmaWebhook = (xSignature, requestBody) => {
       return false;
     }
 
-    // Concatenar timestamp + body
-    const dataToHash = `${timestamp}.${requestBody}`;
+    // Obtener x-request-id (requerido según spec)
+    const requestId = xRequestId || "";
+    if (!requestId) {
+      console.warn("⚠️ Header x-request-id no presente en webhook");
+    }
 
-    // Calcular HMAC-SHA256 usando MP_WEBHOOK_SECRET
+    // Obtener ID desde query parameters o body
+    // Prioridad: req.query["data.id"] > req.query.id > extraer de body.resource
+    let id = null;
+    
+    if (query && query["data.id"]) {
+      id = query["data.id"];
+      console.log(`[validarFirmaWebhook] ID obtenido de query["data.id"]: ${id}`);
+    } else if (query && query.id) {
+      id = query.id;
+      console.log(`[validarFirmaWebhook] ID obtenido de query.id: ${id}`);
+    } else if (body && body.resource) {
+      // Extraer ID desde body.resource (últimos dígitos de la URL)
+      // Ejemplo: "https://api.mercadolibre.com/merchant_orders/36366123450" -> "36366123450"
+      const resourceUrl = body.resource;
+      const match = resourceUrl.match(/\/(\d+)$/);
+      if (match && match[1]) {
+        id = match[1];
+        console.log(`[validarFirmaWebhook] ID extraído de body.resource: ${id}`);
+      }
+    }
+
+    if (!id) {
+      console.error("❌ No se pudo obtener ID del webhook (requerido para validación)");
+      console.error("   Query params:", query);
+      console.error("   Body:", JSON.stringify(body));
+      // En sandbox, permitir webhooks sin ID
+      if (isSandbox) {
+        console.warn("⚠️ Modo sandbox detectado. Permitiendo webhook sin ID.");
+        return true;
+      }
+      return false;
+    }
+
+    // Crear manifest exacto según spec: "id:${id};request-id:${requestId};ts:${ts};"
+    const manifest = `id:${id};request-id:${requestId};ts:${timestamp};`;
+    console.log(`[validarFirmaWebhook] Manifest creado: ${manifest}`);
+
+    // Calcular HMAC-SHA256 del manifest usando MP_WEBHOOK_SECRET
     const calculatedHash = crypto
       .createHmac("sha256", MP_WEBHOOK_SECRET)
-      .update(dataToHash)
+      .update(manifest)
       .digest("hex");
+
+    console.log(`[validarFirmaWebhook] Hash calculado: ${calculatedHash}`);
+    console.log(`[validarFirmaWebhook] Hash recibido: ${receivedHash}`);
 
     // Comparar hash calculado con el recibido (comparación segura contra timing attacks)
     const isValid = crypto.timingSafeEqual(
@@ -411,8 +456,9 @@ export const validarFirmaWebhook = (xSignature, requestBody) => {
 
     if (!isValid) {
       console.error("❌ Firma de webhook inválida. Posible webhook falso o secret incorrecto.");
-      console.error("   Calculado:", calculatedHash);
-      console.error("   Recibido:", receivedHash);
+      console.error("   Manifest usado:", manifest);
+      console.error("   Hash calculado:", calculatedHash);
+      console.error("   Hash recibido:", receivedHash);
       
       // En sandbox, permitir webhooks con firma inválida (común en entornos de prueba)
       if (isSandbox) {
@@ -420,6 +466,8 @@ export const validarFirmaWebhook = (xSignature, requestBody) => {
         console.warn("⚠️ NOTA: En producción, esto sería rechazado. Verifica MP_WEBHOOK_SECRET.");
         return true; // En sandbox, permitir webhooks con firma inválida
       }
+    } else {
+      console.log("✅ Firma de webhook válida");
     }
 
     return isValid;

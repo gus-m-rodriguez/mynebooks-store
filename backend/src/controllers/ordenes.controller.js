@@ -1462,17 +1462,26 @@ export const verificarPagoPublico = async (req, res) => {
           [id]
         );
 
-        // Registrar en auditoría con información del preference_id si está disponible
-        const tipoAuditoria = preference_id 
-          ? `pago_fallido_mp_sin_payment_id_preference_${preference_id}`
-          : `pago_fallido_mp_sin_payment_id`;
+        // Registrar en auditoría con tipo fijo y corto (VARCHAR(50))
+        // Guardar preference_id en el campo usuario si está disponible (VARCHAR(100), truncando si es necesario)
+        const tipoAuditoria = "pago_fallido_mp_sin_payment_id"; // 32 caracteres, dentro del límite de 50
+        
+        // Construir usuario con preference_id si está disponible, truncando a 100 caracteres máximo
+        let usuarioAuditoria = `usuario_${ordenActual.id_usuario}`;
+        if (preference_id) {
+          const usuarioConPref = `${usuarioAuditoria}_pref_${preference_id}`;
+          // Truncar a 100 caracteres máximo (límite de VARCHAR(100))
+          usuarioAuditoria = usuarioConPref.length > 100 
+            ? usuarioConPref.substring(0, 100) 
+            : usuarioConPref;
+        }
         
         await client.query(
           `INSERT INTO auditoria (tipo, usuario, fecha) 
            VALUES ($1, $2, CURRENT_TIMESTAMP)`,
           [
             tipoAuditoria,
-            `usuario_${ordenActual.id_usuario}`,
+            usuarioAuditoria,
           ]
         );
 
