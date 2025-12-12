@@ -10,7 +10,7 @@ import {
 } from "../config.js";
 
 // Obtener token activo usando la función centralizada
-// Esta función valida, aplica guardrails y loggea automáticamente
+// Esta función valida que el token exista y loggea automáticamente
 const tokenActivo = getMpAccessToken();
 
 // Inicializar cliente de Mercado Pago con el token correcto
