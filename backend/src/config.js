@@ -48,6 +48,65 @@ export const MP_SANDBOX = process.env.MP_SANDBOX === "true" || process.env.MP_SA
 // Si está configurado, todos los pagos usarán este email en modo desarrollo
 export const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL || "";
 
+/**
+ * Obtener el token de acceso de Mercado Pago según el modo configurado
+ * @returns {string} Token de acceso de Mercado Pago
+ * @throws {Error} Si no hay token configurado o si hay inconsistencia entre modo y token
+ */
+export const getMpAccessToken = () => {
+  let tokenActivo = "";
+  let tokenVar = "";
+  
+  if (MP_MODE === "sandbox") {
+    // Prioridad: MP_ACCESS_TOKEN_TEST > MP_ACCESS_TOKEN (compatibilidad legacy)
+    tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
+    tokenVar = "MP_ACCESS_TOKEN_TEST";
+  } else if (MP_MODE === "prod") {
+    // Prioridad: MP_ACCESS_TOKEN_PROD > MP_ACCESS_TOKEN (compatibilidad legacy)
+    tokenActivo = MP_ACCESS_TOKEN_PROD || MP_ACCESS_TOKEN;
+    tokenVar = "MP_ACCESS_TOKEN_PROD";
+  } else {
+    console.error(`❌ [MP] MP_MODE inválido: "${MP_MODE}". Debe ser "sandbox" o "prod".`);
+    console.error(`❌ [MP] Usando modo sandbox por defecto.`);
+    tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
+    tokenVar = "MP_ACCESS_TOKEN_TEST";
+  }
+
+  // Validar que el token esté configurado
+  if (!tokenActivo || tokenActivo.trim() === "") {
+    const errorMsg = `❌ [MP] ${tokenVar} no está configurado en las variables de entorno de Railway`;
+    console.error(errorMsg);
+    console.error(`❌ [MP] Modo actual: ${MP_MODE}`);
+    console.error(`❌ [MP] Por favor, configura ${tokenVar} en Railway (Variables de Entorno)`);
+    throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}. Configura las variables de entorno en Railway.`);
+  }
+
+  // Guardrails: Validar que el token coincida con el modo
+  if (MP_MODE === "sandbox" && tokenActivo.startsWith("APP_USR")) {
+    console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=sandbox pero el token empieza con 'APP_USR' (producción)");
+    console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno en Railway:");
+    console.error("❌ [MP] - MP_MODE debe ser 'sandbox'");
+    console.error("❌ [MP] - MP_ACCESS_TOKEN_TEST debe empezar con 'TEST-'");
+    throw new Error("Configuración inválida: MP_MODE=sandbox pero token de producción detectado. Verifica MP_ACCESS_TOKEN_TEST en Railway.");
+  }
+
+  if (MP_MODE === "prod" && tokenActivo.startsWith("TEST-")) {
+    console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=prod pero el token empieza con 'TEST-' (sandbox)");
+    console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno en Railway:");
+    console.error("❌ [MP] - MP_MODE debe ser 'prod'");
+    console.error("❌ [MP] - MP_ACCESS_TOKEN_PROD debe empezar con 'APP_USR-'");
+    throw new Error("Configuración inválida: MP_MODE=prod pero token de sandbox detectado. Verifica MP_ACCESS_TOKEN_PROD en Railway.");
+  }
+
+  // Loggear modo y prefijo del token (sin exponerlo completo)
+  const tokenPrefix = tokenActivo.startsWith("TEST-") ? "TEST-" : (tokenActivo.startsWith("APP_USR-") ? "APP_USR-" : "UNKNOWN");
+  const tokenType = tokenActivo.startsWith("TEST-") ? "SANDBOX" : "PRODUCCIÓN";
+  console.log(`✅ [MP] Modo configurado: ${MP_MODE}`);
+  console.log(`✅ [MP] Token activo: ${tokenPrefix}... (${tokenType})`);
+
+  return tokenActivo;
+};
+
 // ============================================
 // CONFIGURACIÓN DE EMAIL (Gmail OAuth2)
 // ============================================

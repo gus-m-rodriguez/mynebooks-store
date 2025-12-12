@@ -531,7 +531,7 @@ export const iniciarPago = async (req, res) => {
         if (error.status === 403 || error.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES") {
           errorMessage = "Error de configuración con Mercado Pago: Las URLs de redirección no están permitidas. En desarrollo con localhost, esto es normal. Verifica la configuración de ORIGIN o usa un servicio como ngrok para desarrollo.";
         } else if (error.status === 401) {
-          errorMessage = "Error de autenticación con Mercado Pago. Verifica que MP_ACCESS_TOKEN esté configurado correctamente.";
+          errorMessage = "Error de autenticación con Mercado Pago. Verifica que las variables de entorno (MP_ACCESS_TOKEN_TEST o MP_ACCESS_TOKEN_PROD) estén configuradas correctamente en Railway.";
         } else if (error.message) {
           errorMessage = `Error al crear la preferencia de pago: ${error.message}`;
         }

@@ -2,57 +2,16 @@
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 import crypto from "crypto";
 import { 
-  MP_ACCESS_TOKEN_PROD, 
-  MP_ACCESS_TOKEN_TEST, 
   MP_MODE,
-  MP_ACCESS_TOKEN, // Mantener para compatibilidad
   MP_WEBHOOK_SECRET, 
   MP_TEST_PAYER_EMAIL, 
-  MP_SANDBOX 
+  MP_SANDBOX,
+  getMpAccessToken
 } from "../config.js";
 
-// Determinar el token a usar según MP_MODE
-let tokenActivo = "";
-if (MP_MODE === "sandbox") {
-  // Prioridad: MP_ACCESS_TOKEN_TEST > MP_ACCESS_TOKEN (compatibilidad)
-  tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
-} else if (MP_MODE === "prod") {
-  // Prioridad: MP_ACCESS_TOKEN_PROD > MP_ACCESS_TOKEN (compatibilidad)
-  tokenActivo = MP_ACCESS_TOKEN_PROD || MP_ACCESS_TOKEN;
-} else {
-  console.error(`❌ [MP] MP_MODE inválido: "${MP_MODE}". Debe ser "sandbox" o "prod".`);
-  console.error(`❌ [MP] Usando modo sandbox por defecto.`);
-  tokenActivo = MP_ACCESS_TOKEN_TEST || MP_ACCESS_TOKEN;
-}
-
-// Guardrails: Validar que el token coincida con el modo
-if (MP_MODE === "sandbox" && tokenActivo && tokenActivo.startsWith("APP_USR")) {
-  console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=sandbox pero el token empieza con 'APP_USR' (producción)");
-  console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno:");
-  console.error("❌ [MP] - MP_MODE debe ser 'sandbox'");
-  console.error("❌ [MP] - MP_ACCESS_TOKEN_TEST debe empezar con 'TEST-'");
-  throw new Error("Configuración inválida: MP_MODE=sandbox pero token de producción detectado. Verifica MP_ACCESS_TOKEN_TEST.");
-}
-
-if (MP_MODE === "prod" && tokenActivo && tokenActivo.startsWith("TEST-")) {
-  console.error("❌ [MP] ERROR CRÍTICO: MP_MODE=prod pero el token empieza con 'TEST-' (sandbox)");
-  console.error("❌ [MP] Esto causará fallos en el checkout. Verifica tus variables de entorno:");
-  console.error("❌ [MP] - MP_MODE debe ser 'prod'");
-  console.error("❌ [MP] - MP_ACCESS_TOKEN_PROD debe empezar con 'APP_USR-'");
-  throw new Error("Configuración inválida: MP_MODE=prod pero token de sandbox detectado. Verifica MP_ACCESS_TOKEN_PROD.");
-}
-
-// Validar que el token esté configurado
-if (!tokenActivo || tokenActivo.trim() === "") {
-  const tokenVar = MP_MODE === "sandbox" ? "MP_ACCESS_TOKEN_TEST" : "MP_ACCESS_TOKEN_PROD";
-  console.error(`❌ [MP] ${tokenVar} no está configurado en las variables de entorno`);
-  console.error(`❌ [MP] Por favor, configura ${tokenVar} en el archivo .env`);
-  console.error(`❌ [MP] Modo actual: ${MP_MODE}`);
-  throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}`);
-}
-
-console.log(`✅ [MP] Modo configurado: ${MP_MODE}`);
-console.log(`✅ [MP] Token activo: ${tokenActivo.substring(0, 20)}... (${tokenActivo.startsWith("TEST-") ? "SANDBOX" : "PRODUCCIÓN"})`);
+// Obtener token activo usando la función centralizada
+// Esta función valida, aplica guardrails y loggea automáticamente
+const tokenActivo = getMpAccessToken();
 
 // Inicializar cliente de Mercado Pago con el token correcto
 const client = new MercadoPagoConfig({
@@ -64,14 +23,15 @@ export const payment = new Payment(client);
 
 export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
   try {
-    // El token ya fue validado al inicializar el módulo, pero verificamos nuevamente por seguridad
-    if (!tokenActivo || tokenActivo.trim() === "") {
+    // El token ya fue validado al inicializar el módulo mediante getMpAccessToken()
+    // Verificamos nuevamente por seguridad
+    const currentToken = getMpAccessToken();
+    if (!currentToken || currentToken.trim() === "") {
       const tokenVar = MP_MODE === "sandbox" ? "MP_ACCESS_TOKEN_TEST" : "MP_ACCESS_TOKEN_PROD";
-      throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}`);
+      throw new Error(`${tokenVar} no está configurado. Modo actual: ${MP_MODE}. Configura las variables de entorno en Railway.`);
     }
 
     console.log(`[MP] MP_MODE: ${MP_MODE}`);
-    console.log(`[MP] Token activo: ${tokenActivo.substring(0, 20)}... (${tokenActivo.startsWith("TEST-") ? "SANDBOX" : "PRODUCCIÓN"})`);
     console.log("[MP] Items recibidos:", JSON.stringify(items, null, 2));
 
     // Validar y preparar items para Mercado Pago
