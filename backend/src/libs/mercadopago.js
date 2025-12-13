@@ -90,7 +90,6 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
     }
 
     // Configurar back_urls siempre que estén definidas
-    // IMPORTANTE: back_urls debe estar definido ANTES de auto_return
     if (backUrls && backUrls.success) {
       preferenceBody.back_urls = {
         success: backUrls.success,
@@ -99,11 +98,15 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
       };
       console.log("[MP] back_urls configuradas:", preferenceBody.back_urls);
       
-      // Solo agregar auto_return si NO es localhost
-      // Mercado Pago rechaza auto_return con URLs localhost
-      if (!isLocalhost) {
+      // ⚠️ IMPORTANTE: En sandbox, NO enviar auto_return porque puede causar rechazo de pagos
+      // En producción, solo agregar auto_return si NO es localhost
+      if (MP_MODE === "sandbox") {
+        console.log("ℹ️ [MP] Modo sandbox: auto_return omitido para evitar problemas con políticas de MP.");
+        console.log("ℹ️ [MP] El usuario deberá hacer clic en 'Volver al sitio' después del pago.");
+      } else if (!isLocalhost) {
+        // Solo en producción y si no es localhost
         preferenceBody.auto_return = "approved";
-        console.log("[MP] auto_return configurado: approved (no es localhost)");
+        console.log("[MP] auto_return configurado: approved (producción, no es localhost)");
       } else {
         console.warn("⚠️ [MP] Modo desarrollo con localhost. auto_return omitido (Mercado Pago lo rechaza).");
         console.warn("⚠️ [MP] El usuario deberá hacer clic en 'Volver al sitio' después del pago.");
