@@ -7,3 +7,6 @@ frontend/.env
 # Logs, dist, etc.
 node_modules/
 dist/
+
+# Documentación de referencia
+Mp_problems.md
