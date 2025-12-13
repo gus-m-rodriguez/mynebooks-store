@@ -44,9 +44,12 @@ export const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
 // Útil cuando NODE_ENV=production pero usas sandbox de MP (proyectos académicos)
 // DEPRECATED: Usar MP_MODE en su lugar
 export const MP_SANDBOX = process.env.MP_SANDBOX === "true" || process.env.MP_SANDBOX === "1" || MP_MODE === "sandbox";
-// Email de comprador de prueba para sandbox (opcional)
+// Email de comprador de prueba para sandbox (opcional, deprecated - usar MP_TEST_USER_ID)
 // Si está configurado, todos los pagos usarán este email en modo desarrollo
 export const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL || "";
+// ID de usuario de prueba para sandbox (recomendado)
+// Si está configurado, todos los pagos usarán este test_user_id en modo sandbox
+export const MP_TEST_USER_ID = process.env.MP_TEST_USER_ID || "";
 
 /**
  * Obtener el token de acceso de Mercado Pago según el modo configurado

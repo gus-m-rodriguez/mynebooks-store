@@ -4,7 +4,8 @@ import crypto from "crypto";
 import { 
   MP_MODE,
   MP_WEBHOOK_SECRET, 
-  MP_TEST_PAYER_EMAIL, 
+  MP_TEST_PAYER_EMAIL,
+  MP_TEST_USER_ID,
   MP_SANDBOX,
   getMpAccessToken
 } from "../config.js";
@@ -73,16 +74,30 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
     };
 
     // Configurar back_urls y payer
-    const isDevelopment = process.env.NODE_ENV !== "production";
     const origin = process.env.ORIGIN || "http://localhost:5173";
     const isLocalhost = origin.includes("localhost") || origin.includes("127.0.0.1");
     
-    // En modo desarrollo/sandbox, usar comprador de prueba si está configurado
-    if (isDevelopment && MP_TEST_PAYER_EMAIL && MP_TEST_PAYER_EMAIL.trim() !== "") {
-      preferenceBody.payer = {
-        email: MP_TEST_PAYER_EMAIL.trim(),
-      };
-      console.log("[MP] Usando comprador de prueba:", MP_TEST_PAYER_EMAIL);
+    // En modo sandbox, SIEMPRE usar comprador de prueba si está configurado
+    // Esto es necesario para que los pagos funcionen correctamente en sandbox
+    // Prioridad: MP_TEST_USER_ID > MP_TEST_PAYER_EMAIL (email está deprecated)
+    if (MP_MODE === "sandbox") {
+      if (MP_TEST_USER_ID && MP_TEST_USER_ID.trim() !== "") {
+        // Usar test_user_id (recomendado - usuarios de prueba actuales no tienen email)
+        preferenceBody.payer = {
+          id: MP_TEST_USER_ID.trim(),
+        };
+        console.log("[MP] Usando comprador de prueba (sandbox) con test_user_id:", MP_TEST_USER_ID);
+      } else if (MP_TEST_PAYER_EMAIL && MP_TEST_PAYER_EMAIL.trim() !== "") {
+        // Fallback a email (legacy - para compatibilidad)
+        preferenceBody.payer = {
+          email: MP_TEST_PAYER_EMAIL.trim(),
+        };
+        console.log("[MP] Usando comprador de prueba (sandbox) con email (legacy):", MP_TEST_PAYER_EMAIL);
+      } else {
+        console.warn("⚠️ [MP] Modo sandbox activo pero MP_TEST_USER_ID no está configurado.");
+        console.warn("⚠️ [MP] Los pagos en sandbox pueden fallar. Configura MP_TEST_USER_ID en Railway.");
+        console.warn("⚠️ [MP] El test_user_id se encuentra en el panel de Mercado Pago > Usuarios de prueba.");
+      }
     }
 
     // Configurar back_urls siempre que estén definidas
