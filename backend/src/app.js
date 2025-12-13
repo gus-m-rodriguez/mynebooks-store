@@ -14,6 +14,7 @@ import adminRoutes from "./router/admin.routes.js";
 import usuariosRoutes from "./router/usuarios.routes.js";
 import pagosRoutes from "./router/pagos.routes.js";
 import { mpWhoAmI } from "./debug/mp-whoami.js";
+import { mpMerchantOrderByPreference } from "./debug/mp-merchant-order.js";
 
 const app = express();
 
@@ -82,8 +83,9 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/usuarios", usuariosRoutes); // Gestión de usuarios y permisos (admin)
 app.use("/api/pagos", pagosRoutes); // Webhook de Mercado Pago
 
-// Endpoint temporal de debug - Verificar qué cuenta de MP está usando el token
-app.get("/debug/mp-whoami", mpWhoAmI);
+// Endpoints temporales de debug
+app.get("/debug/mp-whoami", mpWhoAmI); // Verificar qué cuenta de MP está usando el token
+app.get("/debug/mp-merchant-order", mpMerchantOrderByPreference); // Buscar merchant orders por preference_id
 
 // Manejo de errores
 app.use((err, req, res, next) => {
