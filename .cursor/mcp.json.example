@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mercadopago-mcp-server": {
+      "url": "https://mcp.mercadopago.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <TU_ACCESS_TOKEN_AQUI>"
+      }
+    }
+  }
+}
