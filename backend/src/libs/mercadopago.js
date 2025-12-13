@@ -87,16 +87,22 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
           id: MP_TEST_USER_ID.trim(),
         };
         console.log("[MP] Usando comprador de prueba (sandbox) con test_user_id:", MP_TEST_USER_ID);
+        console.log("ℹ️ [MP] IMPORTANTE: En sandbox, usa TARJETAS DE PRUEBA, no 'Dinero en cuenta'.");
+        console.log("ℹ️ [MP] Tarjetas de prueba disponibles en: https://www.mercadopago.com.ar/developers/es/docs/checkout-pro/test-cards");
+        console.log("ℹ️ [MP] Ejemplo: Visa aprobada: 4509 9535 6623 3704 (CVV: 123, Vencimiento: 11/25)");
       } else if (MP_TEST_PAYER_EMAIL && MP_TEST_PAYER_EMAIL.trim() !== "") {
         // Fallback a email (legacy - para compatibilidad)
         preferenceBody.payer = {
           email: MP_TEST_PAYER_EMAIL.trim(),
         };
         console.log("[MP] Usando comprador de prueba (sandbox) con email (legacy):", MP_TEST_PAYER_EMAIL);
+        console.log("ℹ️ [MP] IMPORTANTE: En sandbox, usa TARJETAS DE PRUEBA, no 'Dinero en cuenta'.");
+        console.log("ℹ️ [MP] Tarjetas de prueba disponibles en: https://www.mercadopago.com.ar/developers/es/docs/checkout-pro/test-cards");
       } else {
         console.warn("⚠️ [MP] Modo sandbox activo pero MP_TEST_USER_ID no está configurado.");
         console.warn("⚠️ [MP] Los pagos en sandbox pueden fallar. Configura MP_TEST_USER_ID en Railway.");
         console.warn("⚠️ [MP] El test_user_id se encuentra en el panel de Mercado Pago > Usuarios de prueba.");
+        console.log("ℹ️ [MP] IMPORTANTE: En sandbox, usa TARJETAS DE PRUEBA, no 'Dinero en cuenta'.");
       }
     }
 
