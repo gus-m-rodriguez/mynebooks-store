@@ -53,9 +53,10 @@ export const webhookMercadoPago = async (req, res) => {
     }
 
     console.log("📥 Webhook recibido de Mercado Pago (firma válida):", JSON.stringify(data, null, 2));
+    console.log("📥 Query params del webhook:", JSON.stringify(req.query, null, 2));
 
-    // Procesar webhook
-    const resultado = await procesarWebhook(data);
+    // Procesar webhook (pasar también query para obtener merchant_order_id si viene en query.id)
+    const resultado = await procesarWebhook(data, req.query);
 
     if (!resultado.processed) {
       return res.status(200).json({ message: "Webhook procesado pero no requiere acción" });

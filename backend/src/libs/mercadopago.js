@@ -339,15 +339,16 @@ export const buscarPagosPorMerchantOrder = async (merchantOrderId) => {
 
 /**
  * Procesar notificación de webhook de Mercado Pago
- * @param {Object} data - Datos del webhook
+ * @param {Object} data - Datos del webhook (puede venir del body o query)
+ * @param {Object} query - Query parameters (para obtener merchant_order_id)
  * @returns {Object} - Información del pago procesado
  */
-export const procesarWebhook = async (data) => {
+export const procesarWebhook = async (data, query = {}) => {
   try {
     // Mercado Pago envía diferentes tipos de notificaciones
-    // Tipo "payment" contiene el ID del pago
-    if (data.type === "payment") {
-      const paymentId = data.data?.id;
+    // Tipo "payment" contiene el ID del pago directamente
+    if (data.type === "payment" || data.topic === "payment") {
+      const paymentId = data.data?.id || query.id;
       if (!paymentId) {
         throw new Error("Payment ID no encontrado en webhook");
       }
@@ -365,7 +366,51 @@ export const procesarWebhook = async (data) => {
       };
     }
 
-    return { processed: false, reason: "Tipo de notificación no soportado" };
+    // Tipo "merchant_order" contiene la orden comercial que puede tener múltiples pagos
+    if (data.type === "merchant_order" || data.topic === "merchant_order") {
+      let merchantOrderId = null;
+      
+      // Obtener merchant_order_id desde diferentes fuentes
+      if (query.id) {
+        merchantOrderId = query.id;
+      } else if (data.data?.id) {
+        merchantOrderId = data.data.id;
+      } else if (data.resource) {
+        // Extraer ID desde resource URL: "https://api.mercadolibre.com/merchant_orders/36380757608"
+        const match = data.resource.match(/\/(\d+)$/);
+        if (match && match[1]) {
+          merchantOrderId = match[1];
+        }
+      }
+
+      if (!merchantOrderId) {
+        console.warn("⚠️ [procesarWebhook] merchant_order recibido pero no se pudo extraer merchant_order_id");
+        return { processed: false, reason: "merchant_order_id no encontrado" };
+      }
+
+      console.log(`[procesarWebhook] Procesando webhook de tipo merchant_order, ID: ${merchantOrderId}`);
+
+      // Buscar pagos asociados a esta merchant_order
+      // Usar la función directamente (ya está en el mismo módulo)
+      const pagoInfo = await buscarPagosPorMerchantOrder(merchantOrderId);
+
+      if (!pagoInfo) {
+        console.warn(`⚠️ [procesarWebhook] No se encontraron pagos para merchant_order_id ${merchantOrderId}`);
+        return { processed: false, reason: "No se encontraron pagos en merchant_order" };
+      }
+
+      return {
+        processed: true,
+        payment_id: pagoInfo.id.toString(),
+        status: pagoInfo.status, // approved, rejected, pending, etc.
+        status_detail: pagoInfo.status_detail,
+        external_reference: pagoInfo.external_reference, // ID de la orden
+        transaction_amount: pagoInfo.transaction_amount,
+      };
+    }
+
+    console.warn(`⚠️ [procesarWebhook] Tipo de notificación no soportado: ${data.type || data.topic}`);
+    return { processed: false, reason: `Tipo de notificación no soportado: ${data.type || data.topic}` };
   } catch (error) {
     console.error("Error procesando webhook de Mercado Pago:", error);
     throw error;
