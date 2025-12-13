@@ -164,6 +164,9 @@ export const crearPreferenciaPago = async (items, ordenId, backUrls) => {
     console.log("[MP] Creando preferencia con body:", JSON.stringify(preferenceBody, null, 2));
     console.log(`[MP] MP_MODE: ${MP_MODE}`);
 
+    // Log del payload completo antes del request (para debugging)
+    console.log("MP PREFERENCE PAYLOAD >>>", JSON.stringify(preferenceBody, null, 2));
+
     const result = await preference.create({
       body: preferenceBody,
     });
