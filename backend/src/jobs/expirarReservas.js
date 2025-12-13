@@ -18,14 +18,27 @@ export const expirarReservas = async () => {
     const ahora = new Date();
 
     // Buscar órdenes 'en_pago' que expiraron (solo estas tienen stock reservado)
-    const ordenesExpiradas = await pool.query(
-      `SELECT id_orden, id_usuario 
-       FROM ordenes 
-       WHERE estado = 'en_pago' 
-       AND fecha_expiracion IS NOT NULL 
-       AND fecha_expiracion < $1`,
-      [ahora]
-    );
+    // Manejar errores de conexión específicamente
+    let ordenesExpiradas;
+    try {
+      ordenesExpiradas = await pool.query(
+        `SELECT id_orden, id_usuario 
+         FROM ordenes 
+         WHERE estado = 'en_pago' 
+         AND fecha_expiracion IS NOT NULL 
+         AND fecha_expiracion < $1`,
+        [ahora]
+      );
+    } catch (dbError) {
+      // Si hay error de conexión (ETIMEDOUT, ECONNREFUSED, etc.), loggear y retornar
+      if (dbError.code === 'ETIMEDOUT' || dbError.code === 'ECONNREFUSED' || dbError.code === 'ENOTFOUND') {
+        console.error(`❌ [ExpirarReservas] Error de conexión a la base de datos: ${dbError.code}`);
+        console.error(`❌ [ExpirarReservas] El job se reintentará en el próximo ciclo.`);
+        return { procesadas: 0, error: dbError.code };
+      }
+      // Para otros errores, relanzar
+      throw dbError;
+    }
 
     if (ordenesExpiradas.rowCount === 0) {
       console.log("✅ No hay órdenes expiradas para procesar");
@@ -38,10 +51,20 @@ export const expirarReservas = async () => {
 
     for (const orden of ordenesExpiradas.rows) {
       // Verificar si hay un pago registrado para esta orden
-      const pago = await pool.query(
-        "SELECT id_pago, mp_id, estado FROM pagos WHERE id_orden = $1 ORDER BY id_pago DESC LIMIT 1",
-        [orden.id_orden]
-      );
+      let pago;
+      try {
+        pago = await pool.query(
+          "SELECT id_pago, mp_id, estado FROM pagos WHERE id_orden = $1 ORDER BY id_pago DESC LIMIT 1",
+          [orden.id_orden]
+        );
+      } catch (dbError) {
+        // Si hay error de conexión, loggear y continuar con siguiente orden
+        if (dbError.code === 'ETIMEDOUT' || dbError.code === 'ECONNREFUSED' || dbError.code === 'ENOTFOUND') {
+          console.error(`❌ [ExpirarReservas] Error de conexión al consultar pago para orden ${orden.id_orden}: ${dbError.code}`);
+          continue; // Saltar esta orden
+        }
+        throw dbError; // Para otros errores, relanzar
+      }
 
       let nuevoEstado = "error"; // Por defecto, pasar a error (requiere intervención de admin)
       let tienePagoEnMP = false;
@@ -87,13 +110,36 @@ export const expirarReservas = async () => {
       }
 
       // Obtener items de la orden para liberar stock y reactivar carrito
-      const items = await pool.query(
-        "SELECT id_producto, cantidad FROM orden_items WHERE id_orden = $1",
-        [orden.id_orden]
-      );
+      let items;
+      try {
+        items = await pool.query(
+          "SELECT id_producto, cantidad FROM orden_items WHERE id_orden = $1",
+          [orden.id_orden]
+        );
+      } catch (dbError) {
+        // Si hay error de conexión, loggear y continuar con siguiente orden
+        if (dbError.code === 'ETIMEDOUT' || dbError.code === 'ECONNREFUSED' || dbError.code === 'ENOTFOUND') {
+          console.error(`❌ [ExpirarReservas] Error de conexión al consultar items para orden ${orden.id_orden}: ${dbError.code}`);
+          continue; // Saltar esta orden
+        }
+        throw dbError; // Para otros errores, relanzar
+      }
 
       // Usar transacción para garantizar atomicidad
-      const client = await pool.connect();
+      // Manejar errores de conexión al obtener cliente del pool
+      let client;
+      try {
+        client = await pool.connect();
+      } catch (connectError) {
+        // Si hay error de conexión al obtener cliente, loggear y continuar con siguiente orden
+        if (connectError.code === 'ETIMEDOUT' || connectError.code === 'ECONNREFUSED' || connectError.code === 'ENOTFOUND') {
+          console.error(`❌ [ExpirarReservas] Error de conexión al obtener cliente para orden ${orden.id_orden}: ${connectError.code}`);
+          console.error(`❌ [ExpirarReservas] Continuando con siguiente orden...`);
+          continue; // Saltar esta orden y continuar con la siguiente
+        }
+        throw connectError; // Para otros errores, relanzar
+      }
+      
       try {
         await client.query("BEGIN");
 
@@ -193,6 +239,16 @@ export const expirarReservas = async () => {
     console.log(`✅ ${procesadas} orden(es) expirada(s) procesada(s)`);
     return { procesadas };
   } catch (error) {
+    // Si es un error de conexión, no relanzar (el job se reintentará en el próximo ciclo)
+    if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || 
+        (error.constructor.name === 'AggregateError' && error.errors && 
+         error.errors.some(e => e.code === 'ETIMEDOUT' || e.code === 'ECONNREFUSED' || e.code === 'ENOTFOUND'))) {
+      console.error("❌ [ExpirarReservas] Error de conexión a la base de datos. El job se reintentará en el próximo ciclo.");
+      console.error("❌ [ExpirarReservas] Código de error:", error.code || 'AggregateError');
+      return { procesadas: 0, error: error.code || 'CONNECTION_ERROR' };
+    }
+    
+    // Para otros errores, loggear y relanzar
     console.error("❌ Error al expirar reservas:", error);
     throw error;
   }

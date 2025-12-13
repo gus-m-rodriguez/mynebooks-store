@@ -19,6 +19,10 @@ export const pool = DATABASE_URL
       connectionString: DATABASE_URL,
       // con dominio público usar SSL
       ssl: { rejectUnauthorized: false },
+      // Configuración de timeouts para evitar ETIMEDOUT
+      connectionTimeoutMillis: 10000, // 10 segundos para establecer conexión
+      idleTimeoutMillis: 30000, // 30 segundos antes de cerrar conexión idle
+      max: 20, // máximo de conexiones en el pool
     })
   : new Pool({
       host: PG_HOST,
@@ -28,6 +32,10 @@ export const pool = DATABASE_URL
       database: PG_DATABASE,
       // localhost NO necesita SSL, Railway/Heroku sí
       ssl: (isLocalhost || isInternal) ? false : { rejectUnauthorized: false },
+      // Configuración de timeouts para evitar ETIMEDOUT
+      connectionTimeoutMillis: 10000, // 10 segundos para establecer conexión
+      idleTimeoutMillis: 30000, // 30 segundos antes de cerrar conexión idle
+      max: 20, // máximo de conexiones en el pool
     });
 
 pool.on("connect", () => {
