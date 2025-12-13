@@ -247,10 +247,11 @@ export const buscarPagosPorOrden = async (ordenId) => {
     
     // Usar la API REST directamente ya que el SDK puede no tener este método
     const axios = (await import("axios")).default;
+    const token = getMpAccessToken();
     const response = await axios.get("https://api.mercadopago.com/v1/payments/search", {
       params: searchParams,
       headers: {
-        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
     });
     
@@ -300,9 +301,10 @@ export const buscarPagosPorMerchantOrder = async (merchantOrderId) => {
     console.log(`[buscarPagosPorMerchantOrder] Buscando pagos para merchant_order_id ${merchantOrderId}`);
     
     const axios = (await import("axios")).default;
+    const token = getMpAccessToken();
     const response = await axios.get(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
       headers: {
-        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
     });
     
